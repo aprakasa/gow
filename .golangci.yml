@@ -1,0 +1,45 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+    - bodyclose
+    - nilerr
+    - gosec
+    - goconst
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: var-naming
+        - name: package-comments
+        - name: unused-parameter
+          disabled: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/aprakasa/gow
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
