@@ -14,6 +14,11 @@ import (
 	"github.com/aprakasa/gow/internal/system"
 )
 
+const (
+	presetStandard = "standard"
+	presetCustom   = "custom"
+)
+
 // writeMock creates a temporary executable shell script that runs body.
 func writeMock(t *testing.T, body string) string {
 	t.Helper()
@@ -233,7 +238,7 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
 
-	if err := m.Create("blog.test", "83", "standard"); err != nil {
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -242,8 +247,8 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 	if got == nil {
 		t.Fatal("site not found in store after Create")
 	}
-	if got.Preset != "standard" {
-		t.Errorf("preset = %q, want %q", got.Preset, "standard")
+	if got.Preset != presetStandard {
+		t.Errorf("preset = %q, want %q", got.Preset, presetStandard)
 	}
 
 	// Config file should be written.
@@ -266,10 +271,10 @@ func TestCreate_DuplicateReturnsError(t *testing.T) {
 
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
 
-	if err := m.Create("blog.test", "83", "standard"); err != nil {
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
-	err = m.Create("blog.test", "83", "standard")
+	err = m.Create("blog.test", "83", "standard", nil)
 	if err == nil {
 		t.Fatal("duplicate Create should return error")
 	}
@@ -288,7 +293,7 @@ func TestCreate_InvalidPresetReturnsError(t *testing.T) {
 
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
 
-	err = m.Create("blog.test", "83", "nonexistent")
+	err = m.Create("blog.test", "83", "nonexistent", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -310,7 +315,7 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
 
 	// Create first, then delete.
-	if err := m.Create("blog.test", "83", "standard"); err != nil {
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Delete("blog.test"); err != nil {
@@ -339,5 +344,211 @@ func TestDelete_NotFoundReturnsError(t *testing.T) {
 	err = m.Delete("nope.test")
 	if err == nil {
 		t.Fatal("deleting nonexistent site should return error")
+	}
+}
+
+// --- Tune ---
+
+func TestTune_ChangesPresetAndReconciles(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	defer store.Close()
+
+	ctrl := ols.NewController(writeMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+
+	// Create with standard, then tune to woocommerce.
+	if err := m.Create("shop.test", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if err := m.Tune("shop.test", "woocommerce", nil); err != nil {
+		t.Fatalf("Tune() = %v", err)
+	}
+
+	// Preset should be updated in store.
+	got := store.Find("shop.test")
+	if got == nil {
+		t.Fatal("site not found after tune")
+	}
+	if got.Preset != "woocommerce" {
+		t.Errorf("preset = %q, want %q", got.Preset, "woocommerce")
+	}
+
+	// Config should be rewritten with new allocation.
+	vhostPath := filepath.Join(dir, "vhosts", "shop.test", "vhconf.conf")
+	data, err := os.ReadFile(vhostPath) //nolint:gosec // test reads from temp dir
+	if err != nil {
+		t.Fatalf("read vhost: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "shop.test") {
+		t.Error("vhost config should contain site name after tune")
+	}
+}
+
+func TestTune_NotFoundReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	defer store.Close()
+
+	ctrl := ols.NewController(writeMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+
+	err = m.Tune("nope.test", "heavy", nil)
+	if err == nil {
+		t.Fatal("tuning nonexistent site should return error")
+	}
+}
+
+func TestTune_InvalidPresetReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	defer store.Close()
+
+	ctrl := ols.NewController(writeMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	err = m.Tune("blog.test", "nonexistent", nil)
+	if err == nil {
+		t.Fatal("invalid preset should return error")
+	}
+
+	// Original preset should be unchanged.
+	got := store.Find("blog.test")
+	if got.Preset != presetStandard {
+		t.Errorf("preset should remain %q after failed tune, got %q", presetStandard, got.Preset)
+	}
+}
+
+// --- Custom preset ---
+
+func TestCreate_CustomPreset(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	defer store.Close()
+
+	ctrl := ols.NewController(writeMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+
+	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
+	if err := m.Create("custom.test", "83", "custom", custom); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	got := store.Find("custom.test")
+	if got == nil {
+		t.Fatal("site not found in store after Create with custom preset")
+	}
+	if got.Preset != presetCustom {
+		t.Errorf("preset = %q, want %q", got.Preset, presetCustom)
+	}
+	if got.CustomPreset == nil {
+		t.Fatal("CustomPreset should not be nil")
+	}
+	if got.CustomPreset.PHPMemoryMB != 320 {
+		t.Errorf("CustomPreset.PHPMemoryMB = %d, want 320", got.CustomPreset.PHPMemoryMB)
+	}
+	if got.CustomPreset.WorkerBudgetMB != 160 {
+		t.Errorf("CustomPreset.WorkerBudgetMB = %d, want 160", got.CustomPreset.WorkerBudgetMB)
+	}
+
+	// Config file should be written with custom values.
+	vhostPath := filepath.Join(dir, "vhosts", "custom.test", "vhconf.conf")
+	data, err := os.ReadFile(vhostPath) //nolint:gosec // test reads from temp dir
+	if err != nil {
+		t.Fatalf("read vhost: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "custom.test") {
+		t.Error("vhost config should contain site name")
+	}
+}
+
+func TestTune_ToCustomPreset(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	defer store.Close()
+
+	ctrl := ols.NewController(writeMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+
+	if err := m.Create("shop.test", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	custom := &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 256}
+	if err := m.Tune("shop.test", "custom", custom); err != nil {
+		t.Fatalf("Tune() = %v", err)
+	}
+
+	got := store.Find("shop.test")
+	if got.Preset != presetCustom {
+		t.Errorf("preset = %q, want %q", got.Preset, presetCustom)
+	}
+	if got.CustomPreset == nil {
+		t.Fatal("CustomPreset should not be nil after tuning to custom")
+	}
+	if got.CustomPreset.PHPMemoryMB != 512 {
+		t.Errorf("CustomPreset.PHPMemoryMB = %d, want 512", got.CustomPreset.PHPMemoryMB)
+	}
+}
+
+func TestTune_FromCustomToNamed(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	defer store.Close()
+
+	ctrl := ols.NewController(writeMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+
+	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
+	if err := m.Create("blog.test", "83", "custom", custom); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	if err := m.Tune("blog.test", "standard", nil); err != nil {
+		t.Fatalf("Tune() = %v", err)
+	}
+
+	got := store.Find("blog.test")
+	if got.Preset != presetStandard {
+		t.Errorf("preset = %q, want %q", got.Preset, presetStandard)
+	}
+	if got.CustomPreset != nil {
+		t.Error("CustomPreset should be nil after tuning from custom to named preset")
 	}
 }

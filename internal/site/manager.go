@@ -49,10 +49,15 @@ func (m *Manager) Reconcile() error {
 
 	inputs := make([]allocator.SiteInput, len(sites))
 	for i, s := range sites {
-		inputs[i] = allocator.SiteInput{
+		in := allocator.SiteInput{
 			Name:   s.Name,
 			Preset: s.Preset,
 		}
+		if s.CustomPreset != nil {
+			in.CustomPHPMemoryMB = s.CustomPreset.PHPMemoryMB
+			in.CustomWorkerBudgetMB = s.CustomPreset.WorkerBudgetMB
+		}
+		inputs[i] = in
 	}
 
 	allocs, err := allocator.Compute(m.specs.TotalRAMMB, m.specs.CPUCores, inputs, m.policy)

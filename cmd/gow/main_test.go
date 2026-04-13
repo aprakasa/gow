@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/state"
 )
 
@@ -94,5 +95,67 @@ func TestFormatPresets_ShowsMemory(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "256") {
 		t.Error("output should show standard preset's memory limit")
+	}
+}
+
+// --- formatStatus ---
+
+func TestFormatStatus_Empty(t *testing.T) {
+	var buf bytes.Buffer
+	if err := formatStatus(&buf, 8192, nil, allocator.DefaultPolicy()); err != nil {
+		t.Fatalf("formatStatus() = %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "No sites") {
+		t.Errorf("expected 'No sites' message, got %q", got)
+	}
+}
+
+func TestFormatStatus_ShowsSiteAllocation(t *testing.T) {
+	allocs := []allocator.Allocation{
+		{Site: "blog.test", PresetUsed: "standard", Children: 10, PHPMemoryLimitMB: 256, MemHardMB: 2560},
+	}
+	var buf bytes.Buffer
+	if err := formatStatus(&buf, 8192, allocs, allocator.DefaultPolicy()); err != nil {
+		t.Fatalf("formatStatus() = %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "blog.test") {
+		t.Error("output should contain site name")
+	}
+	if !strings.Contains(got, "standard") {
+		t.Error("output should contain preset")
+	}
+}
+
+func TestFormatStatus_ShowsHeadroom(t *testing.T) {
+	allocs := []allocator.Allocation{
+		{Site: "blog.test", PresetUsed: "standard", Children: 10, MemHardMB: 2560},
+	}
+	var buf bytes.Buffer
+	if err := formatStatus(&buf, 8192, allocs, allocator.DefaultPolicy()); err != nil {
+		t.Fatalf("formatStatus() = %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "Headroom") {
+		t.Error("output should show headroom")
+	}
+}
+
+func TestFormatStatus_ShowsDowngrade(t *testing.T) {
+	allocs := []allocator.Allocation{
+		{Site: "big.test", PresetUsed: "standard", Downgraded: true, Children: 4, MemHardMB: 1024},
+	}
+	var buf bytes.Buffer
+	if err := formatStatus(&buf, 8192, allocs, allocator.DefaultPolicy()); err != nil {
+		t.Fatalf("formatStatus() = %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "downgraded") {
+		t.Error("output should note downgrade")
 	}
 }

@@ -12,10 +12,13 @@ import (
 var ErrInsufficientRAM = errors.New("allocator: insufficient RAM to satisfy MinChildren across all sites")
 
 // SiteInput is the per-site request handed to Compute. A blank Preset is
-// resolved to Policy.DefaultPreset before any math runs.
+// resolved to Policy.DefaultPreset before any math runs. When Preset is
+// "custom", CustomPHPMemoryMB and CustomWorkerBudgetMB must both be > 0.
 type SiteInput struct {
-	Name   string
-	Preset string
+	Name                 string
+	Preset               string
+	CustomPHPMemoryMB    uint64
+	CustomWorkerBudgetMB uint64
 }
 
 // Allocation is the per-site result of Compute. PresetUsed may differ from
@@ -61,7 +64,7 @@ func Compute(totalRAMMB uint64, cpuCores int, sites []SiteInput, p Policy) ([]Al
 	}
 	downgraded := make([]bool, len(sites))
 
-	budget := phpBudget(totalRAMMB, p)
+	budget := PHPBudget(totalRAMMB, p)
 	if budget == 0 {
 		return nil, fmt.Errorf("%w: PHP budget is zero (reservations >= total RAM)", ErrInsufficientRAM)
 	}
@@ -113,6 +116,17 @@ func resolvePresets(sites []SiteInput, p Policy) ([]Preset, error) {
 		if name == "" {
 			name = p.DefaultPreset
 		}
+		if name == "custom" {
+			if s.CustomPHPMemoryMB == 0 || s.CustomWorkerBudgetMB == 0 {
+				return nil, fmt.Errorf("site %q: custom preset requires php_memory_mb and worker_budget_mb > 0", s.Name)
+			}
+			out[i] = Preset{
+				Name:             "custom",
+				PHPMemoryLimitMB: s.CustomPHPMemoryMB,
+				WorkerBudgetMB:   s.CustomWorkerBudgetMB,
+			}
+			continue
+		}
 		preset, err := LookupPreset(name)
 		if err != nil {
 			return nil, fmt.Errorf("site %q: %w", s.Name, err)
@@ -122,10 +136,10 @@ func resolvePresets(sites []SiteInput, p Policy) ([]Preset, error) {
 	return out, nil
 }
 
-// phpBudget calculates the RAM available for PHP workers after server-level
+// PHPBudget calculates the RAM available for PHP workers after server-level
 // reservations and the safety factor. Returns zero when reservations alone
 // meet or exceed total RAM.
-func phpBudget(totalRAMMB uint64, p Policy) uint64 {
+func PHPBudget(totalRAMMB uint64, p Policy) uint64 {
 	osReserve := max(uint64(float64(totalRAMMB)*p.OSReservePct), p.OSReserveMinMB)
 	maria := uint64(float64(totalRAMMB) * p.MariaDBPct)
 	redis := max(uint64(float64(totalRAMMB)*p.RedisPct), p.RedisMinMB)

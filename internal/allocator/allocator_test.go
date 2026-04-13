@@ -236,6 +236,80 @@ func siteName(i int) string {
 	return "s" + strconv.Itoa(i)
 }
 
+// --- Custom preset ---
+
+func TestComputeCustomPresetSingleSite(t *testing.T) {
+	allocs := mustCompute(t, []SiteInput{{
+		Name:                 "custom.test",
+		Preset:               "custom",
+		CustomPHPMemoryMB:    320,
+		CustomWorkerBudgetMB: 160,
+	}})
+
+	a := findAlloc(t, allocs, "custom.test")
+	if a.PresetUsed != "custom" {
+		t.Errorf("PresetUsed = %q, want %q", a.PresetUsed, "custom")
+	}
+	if a.PHPMemoryLimitMB != 320 {
+		t.Errorf("PHPMemoryLimitMB = %d, want 320", a.PHPMemoryLimitMB)
+	}
+	if a.WorkerBudgetMB != 160 {
+		t.Errorf("WorkerBudgetMB = %d, want 160", a.WorkerBudgetMB)
+	}
+	if a.Downgraded {
+		t.Error("Downgraded = true, want false")
+	}
+	if a.Children < DefaultPolicy().MinChildren {
+		t.Errorf("Children = %d, want >= %d", a.Children, DefaultPolicy().MinChildren)
+	}
+}
+
+func TestComputeCustomPresetMixedWithNamed(t *testing.T) {
+	allocs := mustCompute(t, []SiteInput{
+		{Name: "blog.test", Preset: presetStandard},
+		{Name: "custom.test", Preset: "custom", CustomPHPMemoryMB: 320, CustomWorkerBudgetMB: 160},
+	})
+
+	std := findAlloc(t, allocs, "blog.test")
+	cus := findAlloc(t, allocs, "custom.test")
+
+	// Weighted math: totalWeight = 128 + 160 = 288
+	// stdShare = 3961 * 128 / 288 ≈ 1760 → Children = 1760/128 = 13
+	// cusShare = 3961 * 160 / 288 ≈ 2200 → Children = 2200/160 = 13
+	if std.Children <= 0 {
+		t.Errorf("standard Children = %d, want > 0", std.Children)
+	}
+	if cus.Children <= 0 {
+		t.Errorf("custom Children = %d, want > 0", cus.Children)
+	}
+}
+
+func TestComputeCustomPresetNotDowngraded(t *testing.T) {
+	// Pack a small server so the custom site can't fit MinChildren.
+	_, err := Compute(2048, 2, []SiteInput{
+		{Name: "a.test", Preset: "heavy"},
+		{Name: "b.test", Preset: "heavy"},
+		{Name: "c.test", Preset: "heavy"},
+		{Name: "custom.test", Preset: "custom", CustomPHPMemoryMB: 768, CustomWorkerBudgetMB: 384},
+	}, DefaultPolicy())
+
+	if !errors.Is(err, ErrInsufficientRAM) {
+		t.Errorf("err = %v, want ErrInsufficientRAM (custom should not be downgraded)", err)
+	}
+}
+
+func TestComputeCustomPresetZeroValuesRejected(t *testing.T) {
+	_, err := Compute(ramMedium, cpuMedium, []SiteInput{
+		{Name: "bad.test", Preset: "custom"},
+	}, DefaultPolicy())
+	if err == nil {
+		t.Fatal("custom preset with zero values should return error")
+	}
+	if errors.Is(err, ErrInsufficientRAM) {
+		t.Errorf("err = %v, should be validation error not capacity error", err)
+	}
+}
+
 // phpBudgetFor mirrors the allocator's PHPBudget calculation so the invariant
 // test has an independent reference. It intentionally uses the same float
 // coercions as the production phpBudget so rounding stays aligned.

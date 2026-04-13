@@ -18,11 +18,16 @@ import (
 )
 
 var (
-	presetFlag     string
-	phpFlag        string
-	confDirFlag    string
-	stateFileFlag  string
-	policyFileFlag string
+	presetFlag       string
+	phpFlag          string
+	phpMemoryFlag    uint
+	workerBudgetFlag uint
+	tunePresetFlag   string
+	tunePHPMemory    uint
+	tuneWorkerBudget uint
+	confDirFlag      string
+	stateFileFlag    string
+	policyFileFlag   string
 )
 
 func main() {
@@ -51,6 +56,8 @@ func main() {
 	}
 	createCmd.Flags().StringVar(&presetFlag, "preset", "standard", "Resource preset (lite/standard/business/woocommerce/heavy)")
 	createCmd.Flags().StringVar(&phpFlag, "php", "83", "PHP major version")
+	createCmd.Flags().UintVar(&phpMemoryFlag, "php-memory", 0, "PHP memory limit in MB (only with --preset custom)")
+	createCmd.Flags().UintVar(&workerBudgetFlag, "worker-budget", 0, "Worker budget in MB (only with --preset custom)")
 
 	deleteCmd := &cobra.Command{
 		Use:   "delete <domain>",
@@ -65,7 +72,17 @@ func main() {
 		RunE:  runList,
 	}
 
-	siteCmd.AddCommand(createCmd, deleteCmd, listCmd)
+	tuneCmd := &cobra.Command{
+		Use:   "tune <domain>",
+		Short: "Change the resource preset for an existing site",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runTune,
+	}
+	tuneCmd.Flags().StringVar(&tunePresetFlag, "preset", "", "New resource preset (required)")
+	tuneCmd.Flags().UintVar(&tunePHPMemory, "php-memory", 0, "PHP memory limit in MB (only with --preset custom)")
+	tuneCmd.Flags().UintVar(&tuneWorkerBudget, "worker-budget", 0, "Worker budget in MB (only with --preset custom)")
+
+	siteCmd.AddCommand(createCmd, deleteCmd, listCmd, tuneCmd)
 
 	// --- presets ---
 	presetsCmd := &cobra.Command{
@@ -81,7 +98,14 @@ func main() {
 		RunE:  runReconcile,
 	}
 
-	rootCmd.AddCommand(siteCmd, presetsCmd, reconcileCmd)
+	// --- status ---
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show current allocations and resource headroom",
+		RunE:  runStatus,
+	}
+
+	rootCmd.AddCommand(siteCmd, presetsCmd, reconcileCmd, statusCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -112,12 +136,16 @@ func newManager() (*site.Manager, func(), error) {
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
+	custom, err := resolveCustom(presetFlag, phpMemoryFlag, workerBudgetFlag)
+	if err != nil {
+		return err
+	}
 	m, cleanup, err := newManager()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
-	return m.Create(args[0], phpFlag, presetFlag)
+	return m.Create(args[0], phpFlag, presetFlag, custom)
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
@@ -152,6 +180,72 @@ func runReconcile(cmd *cobra.Command, args []string) error {
 	return m.Reconcile()
 }
 
+func runTune(cmd *cobra.Command, args []string) error {
+	if tunePresetFlag == "" {
+		return fmt.Errorf("required flag: --preset")
+	}
+	custom, err := resolveCustom(tunePresetFlag, tunePHPMemory, tuneWorkerBudget)
+	if err != nil {
+		return err
+	}
+	m, cleanup, err := newManager()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return m.Tune(args[0], tunePresetFlag, custom)
+}
+
+func runStatus(cmd *cobra.Command, _ []string) error {
+	specs, err := system.Detect()
+	if err != nil {
+		return fmt.Errorf("detect hardware: %w", err)
+	}
+
+	policy, err := allocator.LoadPolicyFromFile(policyFileFlag)
+	if err != nil {
+		return fmt.Errorf("load policy: %w", err)
+	}
+
+	store, err := state.Open(stateFileFlag)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	sites := store.Sites()
+	if len(sites) == 0 {
+		return formatStatus(cmd.OutOrStdout(), specs.TotalRAMMB, nil, policy)
+	}
+
+	inputs := make([]allocator.SiteInput, len(sites))
+	for i, s := range sites {
+		inputs[i] = allocator.SiteInput{Name: s.Name, Preset: s.Preset}
+	}
+
+	allocs, err := allocator.Compute(specs.TotalRAMMB, specs.CPUCores, inputs, policy)
+	if err != nil {
+		return fmt.Errorf("compute allocations: %w", err)
+	}
+
+	return formatStatus(cmd.OutOrStdout(), specs.TotalRAMMB, allocs, policy)
+}
+
+// resolveCustom validates custom-preset flags and returns a CustomPreset when
+// preset is "custom", or nil for named presets.
+func resolveCustom(preset string, phpMem, workerBudget uint) (*state.CustomPreset, error) {
+	if preset != "custom" {
+		if phpMem != 0 || workerBudget != 0 {
+			return nil, fmt.Errorf("--php-memory and --worker-budget require --preset custom")
+		}
+		return nil, nil
+	}
+	if phpMem == 0 || workerBudget == 0 {
+		return nil, fmt.Errorf("--preset custom requires --php-memory and --worker-budget > 0")
+	}
+	return &state.CustomPreset{PHPMemoryMB: uint64(phpMem), WorkerBudgetMB: uint64(workerBudget)}, nil
+}
+
 // formatSites writes a human-readable site listing to w.
 func formatSites(w io.Writer, sites []state.Site) error {
 	if len(sites) == 0 {
@@ -181,6 +275,40 @@ func formatPresets(w io.Writer) error {
 		if _, err := fmt.Fprintf(tw, "%s\t%dMB\t%dMB\t%s\n", p.Name, p.PHPMemoryLimitMB, p.WorkerBudgetMB, p.Description); err != nil {
 			return err
 		}
+	}
+	return tw.Flush()
+}
+
+// formatStatus writes a status overview showing per-site allocations and
+// overall PHP budget headroom.
+func formatStatus(w io.Writer, totalRAMMB uint64, allocs []allocator.Allocation, p allocator.Policy) error {
+	if len(allocs) == 0 {
+		_, err := fmt.Fprintln(w, "No sites configured.")
+		return err
+	}
+
+	budget := allocator.PHPBudget(totalRAMMB, p)
+	var used uint64
+	for _, a := range allocs {
+		used += a.MemHardMB
+	}
+	headroom := budget - min(used, budget)
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(tw, "SITE\tPRESET\tCHILDREN\tHARD LIMIT\tNOTE"); err != nil {
+		return err
+	}
+	for _, a := range allocs {
+		note := ""
+		if a.Downgraded {
+			note = "(downgraded)"
+		}
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%d\t%dMB\t%s\n", a.Site, a.PresetUsed, a.Children, a.MemHardMB, note); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(tw, "\nPHP Budget: %dMB\tAllocated: %dMB\tHeadroom: %dMB\n", budget, used, headroom); err != nil {
+		return err
 	}
 	return tw.Flush()
 }
