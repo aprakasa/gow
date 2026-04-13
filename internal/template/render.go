@@ -26,13 +26,20 @@ type ExtAppData struct {
 }
 
 // VHostData holds the values injected into the vhost.conf.tmpl template.
+// The allocator-derived fields (Children, PHPMemoryLimitMB, MemSoftMB,
+// MemHardMB) populate the extprocessor block so each site gets its own
+// resource-isolated LSPHP cluster.
 type VHostData struct {
-	Site    string
-	Domain  string
-	Aliases string
-	WebRoot string
-	LogDir  string
-	PHPVer  string
+	Site             string
+	Domain           string
+	Aliases          string
+	WebRoot          string
+	LogDir           string
+	PHPVer           string
+	Children         int
+	PHPMemoryLimitMB uint64
+	MemSoftMB        uint64
+	MemHardMB        uint64
 }
 
 // RenderExtApp renders the LSPHP external-app block for a single site.

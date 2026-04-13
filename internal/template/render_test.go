@@ -219,3 +219,36 @@ func TestRenderVHostContainsPHPPath(t *testing.T) {
 		t.Error("output should contain lsphp binary path")
 	}
 }
+
+func TestRenderVHostUsesAllocatorValues(t *testing.T) {
+	data := VHostData{
+		Site:             "blog.test",
+		Domain:           "blog.test",
+		Aliases:          "www.blog.test",
+		WebRoot:          "/var/www/blog.test",
+		LogDir:           "/var/log/lsws",
+		PHPVer:           "83",
+		Children:         16,
+		PHPMemoryLimitMB: 256,
+		MemSoftMB:        3276,
+		MemHardMB:        4096,
+	}
+	got, err := RenderVHost(data)
+	if err != nil {
+		t.Fatalf("RenderVHost() error = %v", err)
+	}
+	checks := []struct{ label, substr string }{
+		{"maxConns from allocator", "maxConns                16"},
+		{"PHP_LSAPI_CHILDREN from allocator", "PHP_LSAPI_CHILDREN=16"},
+		{"PHP_MEMORY_LIMIT from allocator", "PHP_MEMORY_LIMIT=256M"},
+		{"memSoftLimit from allocator", "memSoftLimit            3276M"},
+		{"memHardLimit from allocator", "memHardLimit            4096M"},
+		{"procSoftLimit from allocator", "procSoftLimit           16"},
+		{"procHardLimit = Children*2", "procHardLimit           32"},
+	}
+	for _, c := range checks {
+		if !strings.Contains(got, c.substr) {
+			t.Errorf("output missing %s: %q\ngot:\n%s", c.label, c.substr, got)
+		}
+	}
+}
