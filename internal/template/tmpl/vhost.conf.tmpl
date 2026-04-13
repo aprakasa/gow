@@ -1,0 +1,83 @@
+docRoot                   {{.WebRoot}}/htdocs
+vhDomain                  {{.Domain}}
+vhAliases                 {{.Aliases}}
+enableGzip                1
+
+index  {
+  useServer               0
+  indexFiles              index.php, index.html
+}
+
+errorlog {{.LogDir}}/{{.Site}}.error.log {
+  useServer               0
+  logLevel                WARN
+}
+
+accesslog {{.LogDir}}/{{.Site}}.access.log {
+  useServer               0
+  logFormat               "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\""
+}
+
+scripthandler  {
+  add                     lsapi:lsphp-{{.Site}} php
+}
+
+extprocessor lsphp-{{.Site}} {
+  type                    lsapi
+  address                 uds://tmp/lshttpd/{{.Site}}.sock
+  maxConns                10
+  env                     PHP_LSAPI_CHILDREN=10
+  env                     PHP_LSAPI_MAX_REQUESTS=1000
+  env                     PHP_MEMORY_LIMIT=256M
+  env                     LSAPI_AVOID_FORK=200M
+  initTimeout             60
+  retryTimeout            0
+  persistConn             1
+  pcKeepAliveTimeout      30
+  respBuffer              0
+  autoStart               2
+  path                    /usr/local/lsws/lsphp{{.PHPVer}}/bin/lsphp
+  backlog                 100
+  instances               1
+  priority                0
+  memSoftLimit            2048M
+  memHardLimit            2560M
+  procSoftLimit           10
+  procHardLimit           20
+  runOnStartUp            1
+}
+
+context / {
+  location                $DOC_ROOT/
+  allowBrowse             1
+
+  rewrite  {
+    enable                1
+    rules                 <<<END
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.php [L]
+    END
+  }
+}
+
+context /wp-config.php {
+  location                $DOC_ROOT/wp-config.php
+  allowBrowse             0
+
+  accessControl  {
+    deny                  *
+  }
+}
+
+context /xmlrpc.php {
+  location                $DOC_ROOT/xmlrpc.php
+  allowBrowse             0
+
+  accessControl  {
+    allow                 127.0.0.1
+    deny                  *
+  }
+}
+
+cacheroot                 /var/cache/lshttpd/{{.Site}}

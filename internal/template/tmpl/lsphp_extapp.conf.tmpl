@@ -1,0 +1,24 @@
+extprocessor lsphp-{{.Site}} {
+  type                    lsapi
+  address                 uds://tmp/lshttpd/{{.Site}}.sock
+  maxConns                {{.Children}}
+  env                     PHP_LSAPI_CHILDREN={{.Children}}
+  env                     PHP_LSAPI_MAX_REQUESTS=1000
+  env                     PHP_MEMORY_LIMIT={{.PHPMemoryLimitMB}}M
+  env                     LSAPI_AVOID_FORK=200M
+  initTimeout             60
+  retryTimeout            0
+  persistConn             1
+  pcKeepAliveTimeout      30
+  respBuffer              0
+  autoStart               2
+  path                    /usr/local/lsws/lsphp{{.PHPVer}}/bin/lsphp
+  backlog                 100
+  instances               1
+  priority                0
+  memSoftLimit            {{.MemSoftMB}}M
+  memHardLimit            {{.MemHardMB}}M
+  procSoftLimit           {{.Children}}
+  procHardLimit           {{mul .Children 2}}
+  runOnStartUp            1
+}
