@@ -2,8 +2,10 @@ package allocator
 
 import "testing"
 
+const presetStandard = "standard"
+
 func TestPresetsCatalogContainsNamedTiers(t *testing.T) {
-	want := []string{"lite", "standard", "business", "woocommerce", "heavy"}
+	want := []string{"lite", presetStandard, "business", "woocommerce", "heavy"}
 	for _, name := range want {
 		if _, ok := Presets[name]; !ok {
 			t.Errorf("Presets catalog missing %q", name)
@@ -21,7 +23,7 @@ func TestPresetWorkerBudgetNeverExceedsPHPMemoryLimit(t *testing.T) {
 }
 
 func TestPresetsAreMonotonicallyHeavier(t *testing.T) {
-	chain := []string{"lite", "standard", "business", "woocommerce", "heavy"}
+	chain := []string{"lite", presetStandard, "business", "woocommerce", "heavy"}
 	for i := 1; i < len(chain); i++ {
 		prev, curr := Presets[chain[i-1]], Presets[chain[i]]
 		if curr.PHPMemoryLimitMB <= prev.PHPMemoryLimitMB {
@@ -42,12 +44,12 @@ func TestLookupPresetReturnsErrorForUnknown(t *testing.T) {
 }
 
 func TestLookupPresetReturnsDefinitionForKnown(t *testing.T) {
-	p, err := LookupPreset("standard")
+	p, err := LookupPreset(presetStandard)
 	if err != nil {
-		t.Fatalf("LookupPreset(\"standard\") error = %v", err)
+		t.Fatalf("LookupPreset(%q) error = %v", presetStandard, err)
 	}
-	if p.Name != "standard" {
-		t.Errorf("Name = %q, want standard", p.Name)
+	if p.Name != presetStandard {
+		t.Errorf("Name = %q, want %q", p.Name, presetStandard)
 	}
 }
 
@@ -55,8 +57,8 @@ func TestDowngradeChainReturnsLighterPreset(t *testing.T) {
 	cases := []struct{ from, want string }{
 		{"heavy", "woocommerce"},
 		{"woocommerce", "business"},
-		{"business", "standard"},
-		{"standard", "lite"},
+		{"business", presetStandard},
+		{presetStandard, "lite"},
 	}
 	for _, c := range cases {
 		got, ok := DowngradePreset(c.from)
