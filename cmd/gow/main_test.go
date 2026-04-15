@@ -10,8 +10,6 @@ import (
 	"github.com/aprakasa/gow/internal/state"
 )
 
-// --- formatSites ---
-
 func TestFormatSites_Empty(t *testing.T) {
 	var buf bytes.Buffer
 	if err := formatSites(&buf, nil); err != nil {
@@ -58,8 +56,6 @@ func TestFormatSites_ShowsPreset(t *testing.T) {
 	}
 }
 
-// --- formatPresets ---
-
 func TestFormatPresets_ListsAll(t *testing.T) {
 	var buf bytes.Buffer
 	if err := formatPresets(&buf); err != nil {
@@ -97,8 +93,6 @@ func TestFormatPresets_ShowsMemory(t *testing.T) {
 		t.Error("output should show standard preset's memory limit")
 	}
 }
-
-// --- formatStatus ---
 
 func TestFormatStatus_Empty(t *testing.T) {
 	var buf bytes.Buffer
@@ -157,5 +151,87 @@ func TestFormatStatus_ShowsDowngrade(t *testing.T) {
 	got := buf.String()
 	if !strings.Contains(got, "downgraded") {
 		t.Error("output should note downgrade")
+	}
+}
+
+func TestResolveCustom(t *testing.T) {
+	tests := []struct {
+		name         string
+		preset       string
+		phpMem       uint
+		workerBudget uint
+		wantErr      string
+		wantNil      bool
+		wantCustom   *state.CustomPreset
+	}{
+		{
+			name:    "non-custom preset returns nil",
+			preset:  "standard",
+			wantNil: true,
+		},
+		{
+			name:    "non-custom preset with phpMem",
+			preset:  "standard",
+			phpMem:  256,
+			wantErr: "--php-memory and --worker-budget require --preset custom",
+		},
+		{
+			name:         "non-custom preset with workerBudget",
+			preset:       "standard",
+			workerBudget: 1024,
+			wantErr:      "--php-memory and --worker-budget require --preset custom",
+		},
+		{
+			name:         "non-custom preset with both set",
+			preset:       "standard",
+			phpMem:       256,
+			workerBudget: 1024,
+			wantErr:      "--php-memory and --worker-budget require --preset custom",
+		},
+		{
+			name:    "custom preset with zero phpMem",
+			preset:  "custom",
+			wantErr: "--preset custom requires --php-memory and --worker-budget > 0",
+		},
+		{
+			name:    "custom preset with zero workerBudget",
+			preset:  "custom",
+			phpMem:  256,
+			wantErr: "--preset custom requires --php-memory and --worker-budget > 0",
+		},
+		{
+			name:         "custom preset with both set",
+			preset:       "custom",
+			phpMem:       512,
+			workerBudget: 2048,
+			wantCustom:   &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 2048},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveCustom(tt.preset, tt.phpMem, tt.workerBudget)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("expected nil, got %+v", got)
+				}
+				return
+			}
+			if got.PHPMemoryMB != tt.wantCustom.PHPMemoryMB || got.WorkerBudgetMB != tt.wantCustom.WorkerBudgetMB {
+				t.Fatalf("expected %+v, got %+v", tt.wantCustom, got)
+			}
+		})
 	}
 }
