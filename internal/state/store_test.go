@@ -34,7 +34,7 @@ func TestOpenCreatesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	s.Close()
+	_ = s
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Error("Open should create the state file if absent")
@@ -47,8 +47,6 @@ func TestLoadEmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	defer s.Close()
-
 	if len(s.Sites()) != 0 {
 		t.Errorf("expected 0 sites, got %d", len(s.Sites()))
 	}
@@ -58,7 +56,6 @@ func TestLoadEmptyFile(t *testing.T) {
 
 func TestAddSite(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	if err := s.Add(fixtureSite("blog.test", "standard")); err != nil {
 		t.Fatalf("Add() error = %v", err)
@@ -78,7 +75,6 @@ func TestAddSite(t *testing.T) {
 
 func TestAddDuplicateReturnsError(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	_ = s.Add(fixtureSite("blog.test", "standard"))
 	err := s.Add(fixtureSite("blog.test", presetHeavy))
@@ -91,7 +87,6 @@ func TestAddDuplicateReturnsError(t *testing.T) {
 
 func TestRemoveSite(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	_ = s.Add(fixtureSite("blog.test", "standard"))
 	if err := s.Remove("blog.test"); err != nil {
@@ -104,7 +99,6 @@ func TestRemoveSite(t *testing.T) {
 
 func TestRemoveNotFoundReturnsError(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	err := s.Remove("nope.test")
 	if err == nil {
@@ -116,14 +110,13 @@ func TestRemoveNotFoundReturnsError(t *testing.T) {
 
 func TestFindSite(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	_ = s.Add(fixtureSite("blog.test", "standard"))
 	_ = s.Add(fixtureSite("shop.test", "woocommerce"))
 
-	got := s.Find("shop.test")
-	if got == nil {
-		t.Fatal("Find() returned nil for existing site")
+	got, ok := s.Find("shop.test")
+	if !ok {
+		t.Fatal("Find() returned false for existing site")
 	}
 	if got.Name != "shop.test" {
 		t.Errorf("Find() name = %q, want %q", got.Name, "shop.test")
@@ -135,10 +128,9 @@ func TestFindSite(t *testing.T) {
 
 func TestFindNotFound(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
-	if got := s.Find("nope.test"); got != nil {
-		t.Error("Find() should return nil for missing site")
+	if _, ok := s.Find("nope.test"); ok {
+		t.Error("Find() should return false for missing site")
 	}
 }
 
@@ -146,7 +138,6 @@ func TestFindNotFound(t *testing.T) {
 
 func TestUpdateSite(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	_ = s.Add(fixtureSite("blog.test", "standard"))
 	err := s.Update("blog.test", func(site *Site) {
@@ -156,7 +147,7 @@ func TestUpdateSite(t *testing.T) {
 		t.Fatalf("Update() error = %v", err)
 	}
 
-	got := s.Find("blog.test")
+	got, _ := s.Find("blog.test")
 	if got.Preset != presetHeavy {
 		t.Errorf("after Update, preset = %q, want %q", got.Preset, presetHeavy)
 	}
@@ -164,7 +155,6 @@ func TestUpdateSite(t *testing.T) {
 
 func TestUpdateNotFoundReturnsError(t *testing.T) {
 	s, _ := Open(tempStorePath(t))
-	defer s.Close()
 
 	err := s.Update("nope.test", func(site *Site) {
 		site.Preset = presetHeavy
@@ -186,19 +176,17 @@ func TestRoundTrip(t *testing.T) {
 	if err := s1.Save(); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	s1.Close()
 
 	// Second session: load and verify.
 	s2, _ := Open(path)
-	defer s2.Close()
 
 	sites := s2.Sites()
 	if len(sites) != 2 {
 		t.Fatalf("expected 2 sites after round-trip, got %d", len(sites))
 	}
 
-	blog := s2.Find("blog.test")
-	if blog == nil {
+	blog, ok := s2.Find("blog.test")
+	if !ok {
 		t.Fatal("blog.test not found after round-trip")
 	}
 	if blog.Preset != "standard" {
@@ -221,12 +209,10 @@ func TestRoundTripPreservesTimestamps(t *testing.T) {
 		CreatedAt:  ts,
 	})
 	_ = s1.Save()
-	s1.Close()
 
 	s2, _ := Open(path)
-	defer s2.Close()
 
-	got := s2.Find("blog.test")
+	got, _ := s2.Find("blog.test")
 	if !got.CreatedAt.Equal(ts) {
 		t.Errorf("CreatedAt = %v, want %v", got.CreatedAt, ts)
 	}
@@ -250,12 +236,10 @@ func TestCustomPresetRoundTrip(t *testing.T) {
 		CreatedAt:    time.Date(2026, 4, 13, 23, 0, 0, 0, time.UTC),
 	})
 	_ = s1.Save()
-	s1.Close()
 
 	s2, _ := Open(path)
-	defer s2.Close()
 
-	got := s2.Find("custom.test")
+	got, _ := s2.Find("custom.test")
 	if got.CustomPreset == nil {
 		t.Fatal("CustomPreset lost in round-trip")
 	}
@@ -273,7 +257,6 @@ func TestCustomPresetOmittedWhenNil(t *testing.T) {
 	s1, _ := Open(path)
 	_ = s1.Add(fixtureSite("blog.test", "standard"))
 	_ = s1.Save()
-	s1.Close()
 
 	// Read raw JSON and confirm preset_custom is absent.
 	raw, _ := os.ReadFile(path) //nolint:gosec // test reads from temp dir
@@ -302,20 +285,17 @@ func TestSaveAfterRemove(t *testing.T) {
 	_ = s1.Add(fixtureSite("blog.test", "standard"))
 	_ = s1.Add(fixtureSite("shop.test", "woocommerce"))
 	_ = s1.Save()
-	s1.Close()
 
 	s2, _ := Open(path)
 	_ = s2.Remove("blog.test")
 	_ = s2.Save()
-	s2.Close()
 
 	s3, _ := Open(path)
-	defer s3.Close()
 
-	if s3.Find("blog.test") != nil {
+	if _, ok := s3.Find("blog.test"); ok {
 		t.Error("blog.test should be gone after remove + save")
 	}
-	if s3.Find("shop.test") == nil {
+	if _, ok := s3.Find("shop.test"); !ok {
 		t.Error("shop.test should still exist")
 	}
 }

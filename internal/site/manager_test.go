@@ -59,7 +59,6 @@ func TestReconcile_NoSites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	// Mock that fails if called — verifies Reconcile skips OLS with 0 sites.
 	ctrl := ols.NewController(writeMock(t, "echo 'unexpected OLS call' >&2; exit 1"))
@@ -78,7 +77,6 @@ func TestReconcile_SingleSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	if err := store.Add(fixtureSite("blog.test", "standard")); err != nil {
 		t.Fatalf("Add site: %v", err)
@@ -116,7 +114,6 @@ func TestReconcile_MultipleSites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	if err := store.Add(fixtureSite("blog.test", "standard")); err != nil {
 		t.Fatalf("Add blog.test: %v", err)
@@ -148,7 +145,6 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	if err := store.Add(fixtureSite("blog.test", "standard")); err != nil {
 		t.Fatalf("Add site: %v", err)
@@ -179,7 +175,6 @@ func TestReconcile_OLSValidateFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	if err := store.Add(fixtureSite("blog.test", "standard")); err != nil {
 		t.Fatalf("Add site: %v", err)
@@ -202,7 +197,6 @@ func TestReconcile_InsufficientRAM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	// Add many heavy sites on a tiny server.
 	for i := range 10 {
@@ -231,7 +225,6 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -243,8 +236,8 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 	}
 
 	// Site should be in the store.
-	got := store.Find("blog.test")
-	if got == nil {
+	got, ok := store.Find("blog.test")
+	if !ok {
 		t.Fatal("site not found in store after Create")
 	}
 	if got.Preset != presetStandard {
@@ -264,7 +257,6 @@ func TestCreate_DuplicateReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -286,7 +278,6 @@ func TestCreate_InvalidPresetReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -307,7 +298,6 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -323,7 +313,7 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 	}
 
 	// Site should be gone from the store.
-	if got := store.Find("blog.test"); got != nil {
+	if _, ok := store.Find("blog.test"); ok {
 		t.Error("site should be removed from store after Delete")
 	}
 }
@@ -334,7 +324,6 @@ func TestDelete_NotFoundReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -355,7 +344,6 @@ func TestTune_ChangesPresetAndReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -371,8 +359,8 @@ func TestTune_ChangesPresetAndReconciles(t *testing.T) {
 	}
 
 	// Preset should be updated in store.
-	got := store.Find("shop.test")
-	if got == nil {
+	got, ok := store.Find("shop.test")
+	if !ok {
 		t.Fatal("site not found after tune")
 	}
 	if got.Preset != "woocommerce" {
@@ -397,7 +385,6 @@ func TestTune_NotFoundReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -416,7 +403,6 @@ func TestTune_InvalidPresetReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -433,7 +419,7 @@ func TestTune_InvalidPresetReturnsError(t *testing.T) {
 	}
 
 	// Original preset should be unchanged.
-	got := store.Find("blog.test")
+	got, _ := store.Find("blog.test")
 	if got.Preset != presetStandard {
 		t.Errorf("preset should remain %q after failed tune, got %q", presetStandard, got.Preset)
 	}
@@ -447,7 +433,6 @@ func TestCreate_CustomPreset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -459,8 +444,8 @@ func TestCreate_CustomPreset(t *testing.T) {
 		t.Fatalf("Create() = %v", err)
 	}
 
-	got := store.Find("custom.test")
-	if got == nil {
+	got, ok := store.Find("custom.test")
+	if !ok {
 		t.Fatal("site not found in store after Create with custom preset")
 	}
 	if got.Preset != presetCustom {
@@ -494,7 +479,6 @@ func TestTune_ToCustomPreset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -510,7 +494,7 @@ func TestTune_ToCustomPreset(t *testing.T) {
 		t.Fatalf("Tune() = %v", err)
 	}
 
-	got := store.Find("shop.test")
+	got, _ := store.Find("shop.test")
 	if got.Preset != presetCustom {
 		t.Errorf("preset = %q, want %q", got.Preset, presetCustom)
 	}
@@ -528,7 +512,6 @@ func TestTune_FromCustomToNamed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open store: %v", err)
 	}
-	defer store.Close()
 
 	ctrl := ols.NewController(writeMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
@@ -544,7 +527,7 @@ func TestTune_FromCustomToNamed(t *testing.T) {
 		t.Fatalf("Tune() = %v", err)
 	}
 
-	got := store.Find("blog.test")
+	got, _ := store.Find("blog.test")
 	if got.Preset != presetStandard {
 		t.Errorf("preset = %q, want %q", got.Preset, presetStandard)
 	}

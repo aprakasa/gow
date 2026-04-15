@@ -38,8 +38,7 @@ type Store struct {
 }
 
 // Open loads the store from path. If the file does not exist it is created
-// with an empty site list. The caller must call Close when done (currently
-// a no-op but reserved for future file-handle management).
+// with an empty site list.
 func Open(path string) (*Store, error) {
 	s := &Store{path: path}
 
@@ -72,9 +71,6 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// Close releases any resources held by the store.
-func (s *Store) Close() {}
-
 // Sites returns a copy of the current site list.
 func (s *Store) Sites() []Site {
 	s.mu.Lock()
@@ -84,16 +80,17 @@ func (s *Store) Sites() []Site {
 	return out
 }
 
-// Find returns the site with the given name, or nil if not found.
-func (s *Store) Find(name string) *Site {
+// Find returns the site with the given name. The second return value is false
+// if no matching site exists.
+func (s *Store) Find(name string) (Site, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.sites {
 		if s.sites[i].Name == name {
-			return &s.sites[i]
+			return s.sites[i], true
 		}
 	}
-	return nil
+	return Site{}, false
 }
 
 // Add appends a new site. Returns an error if a site with the same name
