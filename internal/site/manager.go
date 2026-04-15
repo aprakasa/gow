@@ -20,7 +20,7 @@ import (
 // and reconciles the OLS configuration.
 type Manager struct {
 	store   *state.Store
-	ols     *ols.Controller
+	ols     ols.Controller
 	specs   system.Specs
 	policy  allocator.Policy
 	confDir string
@@ -28,7 +28,7 @@ type Manager struct {
 
 // NewManager creates a Manager with the given dependencies. confDir is the
 // base directory for rendered OLS configs (e.g., /usr/local/lsws/conf).
-func NewManager(store *state.Store, ctrl *ols.Controller, specs system.Specs, policy allocator.Policy, confDir string) *Manager {
+func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, policy allocator.Policy, confDir string) *Manager {
 	return &Manager{
 		store:   store,
 		ols:     ctrl,

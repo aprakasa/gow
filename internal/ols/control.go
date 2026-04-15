@@ -18,19 +18,26 @@ var (
 	ErrReloadFailed = errors.New("ols: graceful reload failed")
 )
 
-// Controller wraps the OLS control binary (typically lswsctrl).
-type Controller struct {
+// Controller abstracts OpenLiteSpeed control operations for testability.
+type Controller interface {
+	Validate() error
+	GracefulReload() error
+}
+
+var _ Controller = (*LSControl)(nil)
+
+// LSControl implements Controller by shelling out to the OLS binary.
+type LSControl struct {
 	binPath string
 }
 
-// NewController creates a Controller that delegates to the given binary.
-func NewController(binPath string) *Controller {
-	return &Controller{binPath: binPath}
+// NewController creates an LSControl that delegates to the given binary path.
+func NewController(binPath string) *LSControl {
+	return &LSControl{binPath: binPath}
 }
 
-// Validate runs the config-test subcommand and returns ErrConfigInvalid on
-// failure. Stderr from the binary is included in the error message.
-func (c *Controller) Validate() error {
+// Validate runs the OLS config test subcommand.
+func (c *LSControl) Validate() error {
 	cmd := exec.Command(c.binPath, "test") //nolint:gosec // binPath set by CLI, not user input
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -39,9 +46,8 @@ func (c *Controller) Validate() error {
 	return nil
 }
 
-// GracefulReload triggers a graceful OLS restart and returns ErrReloadFailed
-// on failure.
-func (c *Controller) GracefulReload() error {
+// GracefulReload restarts OLS to pick up config changes.
+func (c *LSControl) GracefulReload() error {
 	cmd := exec.Command(c.binPath, "restart") //nolint:gosec // binPath set by CLI, not user input
 	out, err := cmd.CombinedOutput()
 	if err != nil {
