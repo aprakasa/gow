@@ -4,6 +4,10 @@ coverage.out
 coverage.html
 *.test
 *.prof
+*.exe
+*.out
 .DS_Store
 .idea/
 .vscode/
+vendor/
+gow
