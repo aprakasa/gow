@@ -111,7 +111,6 @@ func fixtureVHost() VHostData {
 	return VHostData{
 		Site:    "example.com",
 		Domain:  "example.com",
-		Aliases: "www.example.com",
 		WebRoot: "/var/www/example.com",
 		LogDir:  "/var/log/lsws",
 		PHPVer:  "83",
@@ -128,16 +127,13 @@ func TestRenderVHostContainsDocRoot(t *testing.T) {
 	}
 }
 
-func TestRenderVHostContainsDomainAndAliases(t *testing.T) {
+func TestRenderVHostContainsDomain(t *testing.T) {
 	got, err := RenderVHost(fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
 	if !strings.Contains(got, "vhDomain                  example.com") {
 		t.Error("output should contain vhDomain")
-	}
-	if !strings.Contains(got, "vhAliases                 www.example.com") {
-		t.Error("output should contain vhAliases")
 	}
 }
 
@@ -224,7 +220,6 @@ func TestRenderVHostUsesAllocatorValues(t *testing.T) {
 	data := VHostData{
 		Site:             "blog.test",
 		Domain:           "blog.test",
-		Aliases:          "www.blog.test",
 		WebRoot:          "/var/www/blog.test",
 		LogDir:           "/var/log/lsws",
 		PHPVer:           "83",
@@ -249,6 +244,39 @@ func TestRenderVHostUsesAllocatorValues(t *testing.T) {
 	for _, c := range checks {
 		if !strings.Contains(got, c.substr) {
 			t.Errorf("output missing %s: %q\ngot:\n%s", c.label, c.substr, got)
+		}
+	}
+}
+
+func TestRendererCachesTemplate(t *testing.T) {
+	var r Renderer
+	data := fixtureExtApp()
+	got1, err := r.render("lsphp_extapp.conf.tmpl", data)
+	if err != nil {
+		t.Fatalf("first render: %v", err)
+	}
+	if r.cachedTmpl == nil {
+		t.Fatal("cachedTmpl should be set after first render")
+	}
+	cached := r.cachedTmpl
+	got2, err := r.render("lsphp_extapp.conf.tmpl", data)
+	if err != nil {
+		t.Fatalf("second render: %v", err)
+	}
+	if r.cachedTmpl != cached {
+		t.Error("cachedTmpl should not change on subsequent calls")
+	}
+	if got1 != got2 {
+		t.Error("output should be identical across calls")
+	}
+}
+
+func BenchmarkRenderExtApp(b *testing.B) {
+	data := fixtureExtApp()
+	for i := 0; i < b.N; i++ {
+		_, err := RenderExtApp(data)
+		if err != nil {
+			b.Fatal(err)
 		}
 	}
 }
