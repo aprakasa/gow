@@ -52,6 +52,28 @@ func TestLoadEmptyFile(t *testing.T) {
 	}
 }
 
+func TestOpenExistingEmptyFile_Normalizes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(path, []byte{}, 0o644); err != nil { //nolint:gosec // test file
+		t.Fatalf("create empty file: %v", err)
+	}
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if len(s.Sites()) != 0 {
+		t.Errorf("expected 0 sites, got %d", len(s.Sites()))
+	}
+	data, err := os.ReadFile(path) //nolint:gosec // test reads from temp dir
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("empty file should be normalized to valid JSON by Open")
+	}
+}
+
 // --- Add ---
 
 func TestAddSite(t *testing.T) {
@@ -131,6 +153,41 @@ func TestFindNotFound(t *testing.T) {
 
 	if _, ok := s.Find("nope.test"); ok {
 		t.Error("Find() should return false for missing site")
+	}
+}
+
+func TestFind_ReturnsDefensiveCopy(t *testing.T) {
+	s, _ := Open(tempStorePath(t))
+
+	_ = s.Add(Site{
+		Name:         "custom.test",
+		PHPVersion:   "83",
+		Preset:       "custom",
+		CustomPreset: &CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160},
+		CreatedAt:    time.Date(2026, 4, 13, 22, 0, 0, 0, time.UTC),
+	})
+
+	got, ok := s.Find("custom.test")
+	if !ok {
+		t.Fatal("Find() returned false for existing site")
+	}
+	got.CustomPreset.PHPMemoryMB = 9999
+
+	original, _ := s.Find("custom.test")
+	if original.CustomPreset.PHPMemoryMB == 9999 {
+		t.Error("Find() should return a defensive copy; mutating the result must not affect the store")
+	}
+}
+
+func TestAddWithoutSave_NotPersisted(t *testing.T) {
+	path := tempStorePath(t)
+
+	s1, _ := Open(path)
+	_ = s1.Add(fixtureSite("blog.test", "standard"))
+
+	s2, _ := Open(path)
+	if _, ok := s2.Find("blog.test"); ok {
+		t.Error("site added without Save should not be visible in a new store instance")
 	}
 }
 

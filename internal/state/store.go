@@ -58,6 +58,9 @@ func Open(path string) (*Store, error) {
 
 	if len(data) == 0 {
 		s.sites = []Site{}
+		if saveErr := s.Save(); saveErr != nil {
+			return nil, fmt.Errorf("state: write %s: %w", path, saveErr)
+		}
 		return s, nil
 	}
 
@@ -80,21 +83,28 @@ func (s *Store) Sites() []Site {
 	return out
 }
 
-// Find returns the site with the given name. The second return value is false
-// if no matching site exists.
+// Find returns a defensive copy of the site with the given name. The second
+// return value is false if no matching site exists. The returned Site is safe
+// to mutate without affecting the store's internal state.
 func (s *Store) Find(name string) (Site, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.sites {
 		if s.sites[i].Name == name {
-			return s.sites[i], true
+			cp := s.sites[i]
+			if cp.CustomPreset != nil {
+				p := *cp.CustomPreset
+				cp.CustomPreset = &p
+			}
+			return cp, true
 		}
 	}
 	return Site{}, false
 }
 
 // Add appends a new site. Returns an error if a site with the same name
-// already exists.
+// already exists. The mutation is in-memory only; callers must call Save to
+// persist the change.
 func (s *Store) Add(site Site) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -108,7 +118,8 @@ func (s *Store) Add(site Site) error {
 }
 
 // Remove deletes the site with the given name. Returns an error if the site
-// does not exist.
+// does not exist. The mutation is in-memory only; callers must call Save to
+// persist the change.
 func (s *Store) Remove(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -122,7 +133,8 @@ func (s *Store) Remove(name string) error {
 }
 
 // Update applies fn to the site with the given name. Returns an error if the
-// site does not exist.
+// site does not exist. The mutation is in-memory only; callers must call Save
+// to persist the change.
 func (s *Store) Update(name string, fn func(*Site)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
