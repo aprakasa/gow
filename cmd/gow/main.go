@@ -133,11 +133,20 @@ func main() {
 	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.redis, "redis", false, "Uninstall Redis")
 	stackUninstallCmd.Flags().StringVar(&stackUninstallFlags.php, "php", "81", "PHP major version (81-85)")
 
+	stackStatusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show stack component status",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runStackStatus(stackInstallFlags.php, cmd.OutOrStdout())
+		},
+	}
+	stackStatusCmd.Flags().StringVar(&stackInstallFlags.php, "php", "81", "PHP major version (81-85)")
+
 	stackCmd := &cobra.Command{
 		Use:   "stack",
 		Short: "Manage the server stack (OLS, LSPHP, MariaDB, Redis)",
 	}
-	stackCmd.AddCommand(stackInstallCmd, stackUninstallCmd)
+	stackCmd.AddCommand(stackInstallCmd, stackUninstallCmd, stackStatusCmd)
 
 	presetsCmd := &cobra.Command{
 		Use:   "presets",
@@ -345,7 +354,13 @@ func runStackInstall(sf stackFlags) error {
 	names := resolveStackFlags(sf)
 	components := stack.Lookup(names, phpVer)
 	r := stack.NewShellRunner()
+	// Repair dpkg if previously interrupted (e.g. Ctrl+C during purge).
+	_ = r.Run("dpkg", "--configure", "-a")
 	for _, c := range components {
+		if err := c.Verify(r); err == nil {
+			fmt.Printf("  %s: already installed, skipping\n", c.Name)
+			continue
+		}
 		fmt.Printf("Installing %s...\n", c.Name)
 		if err := c.Install(r); err != nil {
 			return err
@@ -363,9 +378,15 @@ func runStackUninstall(sf stackFlags) error {
 	names := resolveStackFlags(sf)
 	components := stack.Lookup(names, phpVer)
 	r := stack.NewShellRunner()
+	// Repair dpkg if previously interrupted (e.g. Ctrl+C during purge).
+	_ = r.Run("dpkg", "--configure", "-a")
 	// Uninstall in reverse order.
 	for i := len(components) - 1; i >= 0; i-- {
 		c := components[i]
+		if err := c.Verify(r); err != nil {
+			fmt.Printf("  %s: not installed, skipping\n", c.Name)
+			continue
+		}
 		fmt.Printf("Uninstalling %s...\n", c.Name)
 		if err := c.Uninstall(r); err != nil {
 			return err
@@ -373,6 +394,26 @@ func runStackUninstall(sf stackFlags) error {
 		fmt.Printf("  %s: removed\n", c.Name)
 	}
 	return nil
+}
+
+func runStackStatus(phpVer string, w io.Writer) error {
+	if phpVer == "" {
+		phpVer = "81"
+	}
+	components := stack.Registry(phpVer)
+	r := stack.NewShellRunner()
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "COMPONENT\tSTATUS\tDETAIL")
+	for _, c := range components {
+		if err := c.Verify(r); err != nil {
+			fmt.Fprintf(tw, "%s\tnot installed\t\n", c.Name)
+			continue
+		}
+		detail, _ := c.Status(r)
+		fmt.Fprintf(tw, "%s\tinstalled\t%s\n", c.Name, detail)
+	}
+	return tw.Flush()
 }
 
 func resolveStackFlags(sf stackFlags) []string {

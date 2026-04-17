@@ -8,6 +8,7 @@ type Component struct {
 	InstallFn   func(Runner) error
 	UninstallFn func(Runner) error
 	VerifyFn    func(Runner) error
+	StatusFn    func(Runner) (string, error) // optional: returns version/detail string
 }
 
 // Install runs the component's install function. On error, it returns
@@ -33,6 +34,15 @@ func (c Component) Verify(r Runner) error {
 		return fmt.Errorf("stack: verify %s: %w", c.Name, err)
 	}
 	return nil
+}
+
+// Status returns a human-readable detail string for the component (e.g. version).
+// Returns ("", nil) if StatusFn is not set.
+func (c Component) Status(r Runner) (string, error) {
+	if c.StatusFn == nil {
+		return "", nil
+	}
+	return c.StatusFn(r)
 }
 
 // Registry returns all known components in install order.

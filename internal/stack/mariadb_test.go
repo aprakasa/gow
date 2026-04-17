@@ -74,12 +74,12 @@ func TestMariaDB_Uninstall_StopsAndPurges(t *testing.T) {
 		t.Fatalf("Uninstall() = %v", err)
 	}
 
-	// Should stop service first
+	// Should stop service first (via debconf pre-seed)
 	if len(calls) < 1 {
 		t.Fatal("expected at least 1 call")
 	}
-	if calls[0].name != "systemctl" || !containsAny(calls[0].args, "stop") {
-		t.Errorf("first call should be systemctl stop, got %v", calls[0])
+	if calls[0].name != "sh" || !containsAny(calls[0].args, "debconf-set-selections") {
+		t.Errorf("first call should be debconf pre-seed, got %v", calls[0])
 	}
 
 	// Should purge packages
