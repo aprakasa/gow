@@ -13,6 +13,7 @@ import (
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
 	"github.com/aprakasa/gow/internal/site"
+	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
 )
@@ -21,6 +22,7 @@ type cliConfig struct {
 	confDir    string
 	stateFile  string
 	policyFile string
+	webRoot    string
 }
 
 type siteFlags struct {
@@ -28,6 +30,14 @@ type siteFlags struct {
 	php          string
 	phpMemory    uint
 	workerBudget uint
+}
+
+type stackFlags struct {
+	ols     bool
+	lsphp   bool
+	mariadb bool
+	redis   bool
+	php     string
 }
 
 func main() {
@@ -42,6 +52,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&cfg.confDir, "conf-dir", "/usr/local/lsws/conf", "OLS config base directory")
 	rootCmd.PersistentFlags().StringVar(&cfg.stateFile, "state-file", "/etc/gow/state.json", "Site registry file")
 	rootCmd.PersistentFlags().StringVar(&cfg.policyFile, "policy-file", "/etc/gow/policy.yaml", "Allocator policy override")
+	rootCmd.PersistentFlags().StringVar(&cfg.webRoot, "web-root", "/var/www", "Base directory for site document roots")
 
 	siteCmd := &cobra.Command{
 		Use:   "site",
@@ -94,6 +105,40 @@ func main() {
 
 	siteCmd.AddCommand(createCmd, deleteCmd, listCmd, tuneCmd)
 
+	var stackInstallFlags stackFlags
+	stackInstallCmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install stack components",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackInstall(stackInstallFlags)
+		},
+	}
+	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.ols, "ols", false, "Install OpenLiteSpeed")
+	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.lsphp, "lsphp", false, "Install LSPHP")
+	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.mariadb, "mariadb", false, "Install MariaDB")
+	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.redis, "redis", false, "Install Redis")
+	stackInstallCmd.Flags().StringVar(&stackInstallFlags.php, "php", "81", "PHP major version (81-85)")
+
+	var stackUninstallFlags stackFlags
+	stackUninstallCmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Uninstall stack components",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackUninstall(stackUninstallFlags)
+		},
+	}
+	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.ols, "ols", false, "Uninstall OpenLiteSpeed")
+	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.lsphp, "lsphp", false, "Uninstall LSPHP")
+	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.mariadb, "mariadb", false, "Uninstall MariaDB")
+	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.redis, "redis", false, "Uninstall Redis")
+	stackUninstallCmd.Flags().StringVar(&stackUninstallFlags.php, "php", "81", "PHP major version (81-85)")
+
+	stackCmd := &cobra.Command{
+		Use:   "stack",
+		Short: "Manage the server stack (OLS, LSPHP, MariaDB, Redis)",
+	}
+	stackCmd.AddCommand(stackInstallCmd, stackUninstallCmd)
+
 	presetsCmd := &cobra.Command{
 		Use:   "presets",
 		Short: "List available resource presets",
@@ -118,7 +163,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(siteCmd, presetsCmd, reconcileCmd, statusCmd)
+	rootCmd.AddCommand(siteCmd, stackCmd, presetsCmd, reconcileCmd, statusCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -126,51 +171,76 @@ func main() {
 	}
 }
 
-func newManager(cfg cliConfig) (*site.Manager, func(), error) {
-	specs, err := system.Detect()
+// deps groups the side-effecting operations that cmd/gow depends on.
+// Production code uses defaultDeps; tests inject mocks via this struct.
+type deps struct {
+	detectSpecs func() (system.Specs, error)
+	loadPolicy  func(string) (allocator.Policy, error)
+	openStore   func(string) (*state.Store, error)
+	newOLS      func() ols.Controller
+}
+
+var defaultDeps = deps{
+	detectSpecs: system.Detect,
+	loadPolicy:  allocator.LoadPolicyFromFile,
+	openStore:   state.Open,
+	newOLS:      func() ols.Controller { return ols.NewController(ols.DefaultBinPath) },
+}
+
+func newManagerWithDeps(cfg cliConfig, d deps) (*site.Manager, error) {
+	specs, err := d.detectSpecs()
 	if err != nil {
-		return nil, nil, fmt.Errorf("detect hardware: %w", err)
+		return nil, fmt.Errorf("detect hardware: %w", err)
 	}
 
-	policy, err := allocator.LoadPolicyFromFile(cfg.policyFile)
+	policy, err := d.loadPolicy(cfg.policyFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("load policy: %w", err)
+		return nil, fmt.Errorf("load policy: %w", err)
 	}
 
-	store, err := state.Open(cfg.stateFile)
+	store, err := d.openStore(cfg.stateFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open state: %w", err)
+		return nil, fmt.Errorf("open state: %w", err)
 	}
 
-	ctrl := ols.NewController(ols.DefaultBinPath)
-	cleanup := func() {}
-	return site.NewManager(store, ctrl, specs, policy, cfg.confDir), cleanup, nil
+	ctrl := d.newOLS()
+	return site.NewManager(store, ctrl, specs, policy, cfg.confDir, cfg.webRoot), nil
 }
 
 func runCreate(cfg cliConfig, sf siteFlags, domain string) error {
+	return runCreateWithDeps(cfg, sf, domain, defaultDeps)
+}
+
+func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
 	custom, err := resolveCustom(sf.preset, sf.phpMemory, sf.workerBudget)
 	if err != nil {
 		return err
 	}
-	m, cleanup, err := newManager(cfg)
+	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 	return m.Create(domain, sf.php, sf.preset, custom)
 }
 
 func runDelete(cfg cliConfig, domain string) error {
-	m, cleanup, err := newManager(cfg)
+	return runDeleteWithDeps(cfg, domain, defaultDeps)
+}
+
+func runDeleteWithDeps(cfg cliConfig, domain string, d deps) error {
+	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 	return m.Delete(domain)
 }
 
 func runList(cfg cliConfig, w io.Writer) error {
-	store, err := state.Open(cfg.stateFile)
+	return runListWithDeps(cfg, w, defaultDeps)
+}
+
+func runListWithDeps(cfg cliConfig, w io.Writer, d deps) error {
+	store, err := d.openStore(cfg.stateFile)
 	if err != nil {
 		return err
 	}
@@ -183,15 +253,22 @@ func runPresets(w io.Writer) error {
 }
 
 func runReconcile(cfg cliConfig) error {
-	m, cleanup, err := newManager(cfg)
+	return runReconcileWithDeps(cfg, defaultDeps)
+}
+
+func runReconcileWithDeps(cfg cliConfig, d deps) error {
+	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 	return m.Reconcile()
 }
 
 func runTune(cfg cliConfig, sf siteFlags, domain string) error {
+	return runTuneWithDeps(cfg, sf, domain, defaultDeps)
+}
+
+func runTuneWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
 	if sf.preset == "" {
 		return fmt.Errorf("required flag: --preset")
 	}
@@ -199,26 +276,29 @@ func runTune(cfg cliConfig, sf siteFlags, domain string) error {
 	if err != nil {
 		return err
 	}
-	m, cleanup, err := newManager(cfg)
+	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
 	return m.Tune(domain, sf.preset, custom)
 }
 
 func runStatus(cfg cliConfig, w io.Writer) error {
-	specs, err := system.Detect()
+	return runStatusWithDeps(cfg, w, defaultDeps)
+}
+
+func runStatusWithDeps(cfg cliConfig, w io.Writer, d deps) error {
+	specs, err := d.detectSpecs()
 	if err != nil {
 		return fmt.Errorf("detect hardware: %w", err)
 	}
 
-	policy, err := allocator.LoadPolicyFromFile(cfg.policyFile)
+	policy, err := d.loadPolicy(cfg.policyFile)
 	if err != nil {
 		return fmt.Errorf("load policy: %w", err)
 	}
 
-	store, err := state.Open(cfg.stateFile)
+	store, err := d.openStore(cfg.stateFile)
 	if err != nil {
 		return err
 	}
@@ -252,6 +332,73 @@ func resolveCustom(preset string, phpMem, workerBudget uint) (*state.CustomPrese
 		return nil, fmt.Errorf("--preset custom requires --php-memory and --worker-budget > 0")
 	}
 	return &state.CustomPreset{PHPMemoryMB: uint64(phpMem), WorkerBudgetMB: uint64(workerBudget)}, nil
+}
+
+func runStackInstall(sf stackFlags) error {
+	phpVer := sf.php
+	if phpVer == "" {
+		phpVer = "81"
+	}
+	if err := validatePHPVersion(phpVer); err != nil {
+		return err
+	}
+	names := resolveStackFlags(sf)
+	components := stack.Lookup(names, phpVer)
+	r := stack.NewShellRunner()
+	for _, c := range components {
+		fmt.Printf("Installing %s...\n", c.Name)
+		if err := c.Install(r); err != nil {
+			return err
+		}
+		fmt.Printf("  %s: OK\n", c.Name)
+	}
+	return nil
+}
+
+func runStackUninstall(sf stackFlags) error {
+	phpVer := sf.php
+	if phpVer == "" {
+		phpVer = "81"
+	}
+	names := resolveStackFlags(sf)
+	components := stack.Lookup(names, phpVer)
+	r := stack.NewShellRunner()
+	// Uninstall in reverse order.
+	for i := len(components) - 1; i >= 0; i-- {
+		c := components[i]
+		fmt.Printf("Uninstalling %s...\n", c.Name)
+		if err := c.Uninstall(r); err != nil {
+			return err
+		}
+		fmt.Printf("  %s: removed\n", c.Name)
+	}
+	return nil
+}
+
+func resolveStackFlags(sf stackFlags) []string {
+	var names []string
+	if sf.ols {
+		names = append(names, "ols")
+	}
+	if sf.lsphp {
+		names = append(names, "lsphp")
+	}
+	if sf.mariadb {
+		names = append(names, "mariadb")
+	}
+	if sf.redis {
+		names = append(names, "redis")
+	}
+	return names // empty => all components
+}
+
+func validatePHPVersion(v string) error {
+	for _, valid := range []string{"81", "82", "83", "84", "85"} {
+		if v == valid {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported PHP version %q; choose from 81, 82, 83, 84, 85", v)
 }
 
 func formatSites(w io.Writer, sites []state.Site) error {
@@ -292,11 +439,11 @@ func formatStatus(w io.Writer, totalRAMMB uint64, allocs []allocator.Allocation,
 	}
 
 	budget := allocator.PHPBudget(totalRAMMB, p)
-	var used uint64
+	var budgeted uint64
 	for _, a := range allocs {
-		used += a.MemHardMB
+		budgeted += uint64(a.Children) * a.WorkerBudgetMB //nolint:gosec // Children is bounded by cpuCeiling
 	}
-	headroom := budget - min(used, budget)
+	headroom := budget - min(budgeted, budget)
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if _, err := fmt.Fprintln(tw, "SITE\tPRESET\tCHILDREN\tHARD LIMIT\tNOTE"); err != nil {
@@ -311,7 +458,7 @@ func formatStatus(w io.Writer, totalRAMMB uint64, allocs []allocator.Allocation,
 			return err
 		}
 	}
-	if _, err := fmt.Fprintf(tw, "\nPHP Budget: %dMB\tAllocated: %dMB\tHeadroom: %dMB\n", budget, used, headroom); err != nil {
+	if _, err := fmt.Fprintf(tw, "\nPHP Budget: %dMB\tBudgeted: %dMB\tHeadroom: %dMB\n", budget, budgeted, headroom); err != nil {
 		return err
 	}
 	return tw.Flush()
