@@ -2,16 +2,19 @@ package site
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/state"
 )
 
-// Create adds a new site to the state store and runs Reconcile to render its
-// OLS config and reload the server. It validates the preset before touching
-// state so a bad request is rejected early. When preset is "custom", custom
-// must be non-nil with both PHPMemoryMB and WorkerBudgetMB > 0.
+// Create adds a new site to the state store, creates its document root
+// directory, and runs Reconcile to render its OLS config and reload the
+// server. It validates the preset before touching state so a bad request is
+// rejected early. When preset is "custom", custom must be non-nil with both
+// PHPMemoryMB and WorkerBudgetMB > 0.
 func (m *Manager) Create(name, phpVersion, preset string, custom *state.CustomPreset) error {
 	if preset == "custom" {
 		if custom == nil || custom.PHPMemoryMB == 0 || custom.WorkerBudgetMB == 0 {
@@ -32,6 +35,13 @@ func (m *Manager) Create(name, phpVersion, preset string, custom *state.CustomPr
 	}
 	if err := m.store.Add(site); err != nil {
 		return fmt.Errorf("site: create %s: %w", name, err)
+	}
+
+	// Create document root directory.
+	docRoot := filepath.Join(m.webRoot, name, "htdocs")
+	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // web root, world-readable is fine
+		_ = m.store.Remove(name)
+		return fmt.Errorf("site: create %s: mkdir %s: %w", name, docRoot, err)
 	}
 
 	if err := m.Reconcile(); err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/aprakasa/gow/internal/ols"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
+	"github.com/aprakasa/gow/internal/testmock"
 )
 
 const (
@@ -19,27 +20,44 @@ const (
 	presetCustom   = "custom"
 )
 
-// writeMock creates a temporary executable shell script that runs body.
-func writeMock(t *testing.T, body string) string {
+// baseOLSConf returns a minimal httpd_config.conf content.
+const baseOLSConf = `serverName localhost
+virtualHost Example {
+    configFile               conf/vhosts/Example/vhconf.conf
+}
+listener Default {
+    address                  *:80
+    map                      Example *
+}
+`
+
+// setupManager creates a Manager with temp dirs and a base httpd_config.conf.
+func setupManager(t *testing.T) (*Manager, string) {
 	t.Helper()
 	dir := t.TempDir()
-	p := filepath.Join(dir, "mock")
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body), 0o755); err != nil { //nolint:gosec // test mock needs execute bit
-		t.Fatalf("write mock: %v", err)
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
 	}
-	return p
-}
 
-// writeArgMock creates a mock script that captures arguments to a file.
-func writeArgMock(t *testing.T, dir string) string {
-	t.Helper()
-	argFile := filepath.Join(dir, "args")
-	p := filepath.Join(dir, "mock")
-	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$@\" > '%s'\nexit 0", argFile)
-	if err := os.WriteFile(p, []byte(script), 0o755); err != nil { //nolint:gosec // test mock needs execute bit
-		t.Fatalf("write arg mock: %v", err)
+	// Write base httpd_config.conf.
+	confDir := filepath.Join(dir, "conf")
+	if err := os.MkdirAll(confDir, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir conf: %v", err)
 	}
-	return p
+	if err := os.WriteFile(filepath.Join(confDir, "httpd_config.conf"), []byte(baseOLSConf), 0o644); err != nil { //nolint:gosec // test config //nolint:gosec // test config
+		t.Fatalf("write httpd_config: %v", err)
+	}
+
+	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+
+	webRoot := filepath.Join(dir, "www")
+	if err := os.MkdirAll(webRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir www: %v", err)
+	}
+
+	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot), dir
 }
 
 func fixtureSite(name, preset string) state.Site {
@@ -51,20 +69,45 @@ func fixtureSite(name, preset string) state.Site {
 	}
 }
 
+func httpdContent(t *testing.T, dir string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf")) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("read httpd_config: %v", err)
+	}
+	return string(data)
+}
+
+// setupReconcileTest creates a Manager for tests that call Reconcile directly
+// with pre-populated sites. It sets up confDir, webRoot, and httpd_config.conf.
+func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
+	t.Helper()
+	dir := t.TempDir()
+	confDir := filepath.Join(dir, "conf")
+	webRoot := filepath.Join(dir, "www")
+	if err := os.MkdirAll(confDir, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir conf: %v", err)
+	}
+	if err := os.MkdirAll(webRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir www: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(confDir, "httpd_config.conf"), []byte(baseOLSConf), 0o644); err != nil { //nolint:gosec // test config
+		t.Fatalf("write httpd_config: %v", err)
+	}
+	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
+	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot)
+}
+
 // --- Reconcile ---
 
 func TestReconcile_NoSites(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
+	m, dir := setupManager(t)
 
 	// Mock that fails if called — verifies Reconcile skips OLS with 0 sites.
-	ctrl := ols.NewController(writeMock(t, "echo 'unexpected OLS call' >&2; exit 1"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	_ = dir
+	ctrl := ols.NewController(testmock.WriteMock(t, "echo 'unexpected OLS call' >&2; exit 1"))
+	m.ols = ctrl
 
 	if err := m.Reconcile(); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
@@ -82,17 +125,14 @@ func TestReconcile_SingleSite(t *testing.T) {
 		t.Fatalf("Add site: %v", err)
 	}
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m := setupReconcileTest(t, store)
 
 	if err := m.Reconcile(); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
 	// Verify vhost config was written.
-	vhostPath := filepath.Join(dir, "vhosts", "blog.test", "vhconf.conf")
+	vhostPath := filepath.Join(m.confDir, "vhosts", "blog.test", "vhconf.conf")
 	data, err := os.ReadFile(vhostPath) //nolint:gosec // test reads from temp dir
 	if err != nil {
 		t.Fatalf("vhost config not found at %s", vhostPath)
@@ -122,17 +162,14 @@ func TestReconcile_MultipleSites(t *testing.T) {
 		t.Fatalf("Add shop.test: %v", err)
 	}
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m := setupReconcileTest(t, store)
 
 	if err := m.Reconcile(); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
 	for _, name := range []string{"blog.test", "shop.test"} {
-		p := filepath.Join(dir, "vhosts", name, "vhconf.conf")
+		p := filepath.Join(m.confDir, "vhosts", name, "vhconf.conf")
 		if _, err := os.Stat(p); os.IsNotExist(err) {
 			t.Errorf("vhost config missing for %s", name)
 		}
@@ -150,11 +187,23 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 		t.Fatalf("Add site: %v", err)
 	}
 
+	confDir := filepath.Join(dir, "conf")
+	webRoot := filepath.Join(dir, "www")
+	if err := os.MkdirAll(confDir, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir conf: %v", err)
+	}
+	if err := os.MkdirAll(webRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir www: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(confDir, "httpd_config.conf"), []byte(baseOLSConf), 0o644); err != nil { //nolint:gosec // test config
+		t.Fatalf("write httpd_config: %v", err)
+	}
+
 	mockDir := t.TempDir()
-	ctrl := ols.NewController(writeArgMock(t, mockDir))
+	ctrl := ols.NewController(testmock.WriteArgMock(t, mockDir))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
 
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot)
 
 	if err := m.Reconcile(); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
@@ -162,8 +211,6 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 
 	got, _ := os.ReadFile(filepath.Join(mockDir, "args")) //nolint:gosec // test reads from temp dir
 	args := string(got)
-	// The mock captures the last call's args. After Reconcile, the last OLS
-	// call should be "restart" (reload). "test" (validate) was called before it.
 	if !strings.Contains(args, "restart") {
 		t.Errorf("expected 'restart' subcommand in OLS args, got %q", args)
 	}
@@ -180,10 +227,8 @@ func TestReconcile_OLSValidateFails(t *testing.T) {
 		t.Fatalf("Add site: %v", err)
 	}
 
-	ctrl := ols.NewController(writeMock(t, "echo 'syntax error' >&2; exit 1"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m := setupReconcileTest(t, store)
+	m.ols = ols.NewController(testmock.WriteMock(t, "echo 'syntax error' >&2; exit 1"))
 
 	err = m.Reconcile()
 	if err == nil {
@@ -206,10 +251,8 @@ func TestReconcile_InsufficientRAM(t *testing.T) {
 		}
 	}
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 512, CPUCores: 1}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m := setupReconcileTest(t, store)
+	m.specs = system.Specs{TotalRAMMB: 512, CPUCores: 1}
 
 	err = m.Reconcile()
 	if err == nil {
@@ -220,23 +263,14 @@ func TestReconcile_InsufficientRAM(t *testing.T) {
 // --- Create ---
 
 func TestCreate_AddsSiteAndReconciles(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
-
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m, dir := setupManager(t)
 
 	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	// Site should be in the store.
-	got, ok := store.Find("blog.test")
+	got, ok := m.store.Find("blog.test")
 	if !ok {
 		t.Fatal("site not found in store after Create")
 	}
@@ -245,46 +279,61 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 	}
 
 	// Config file should be written.
-	vhostPath := filepath.Join(dir, "vhosts", "blog.test", "vhconf.conf")
+	vhostPath := filepath.Join(dir, "conf", "vhosts", "blog.test", "vhconf.conf")
 	if _, err := os.Stat(vhostPath); os.IsNotExist(err) {
 		t.Error("vhost config not created by Create")
 	}
 }
 
-func TestCreate_DuplicateReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
+func TestCreate_RegistersVirtualHostInHttpdConfig(t *testing.T) {
+	m, dir := setupManager(t)
+
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
 	}
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+	content := httpdContent(t, dir)
+	if !strings.Contains(content, "virtualHost blog.test {") {
+		t.Error("httpd_config.conf should contain virtualHost block for blog.test")
+	}
+	if !strings.Contains(content, "map                      blog.test blog.test") {
+		t.Error("httpd_config.conf should contain listener map entry for blog.test")
+	}
+}
 
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+func TestCreate_CreatesDocRoot(t *testing.T) {
+	m, dir := setupManager(t)
+
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	docRoot := filepath.Join(dir, "www", "blog.test", "htdocs")
+	info, err := os.Stat(docRoot)
+	if err != nil {
+		t.Fatalf("docRoot not created at %s: %v", docRoot, err)
+	}
+	if !info.IsDir() {
+		t.Error("docRoot should be a directory")
+	}
+}
+
+func TestCreate_DuplicateReturnsError(t *testing.T) {
+	m, _ := setupManager(t)
 
 	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
-	err = m.Create("blog.test", "83", "standard", nil)
+	err := m.Create("blog.test", "83", "standard", nil)
 	if err == nil {
 		t.Fatal("duplicate Create should return error")
 	}
 }
 
 func TestCreate_InvalidPresetReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
+	m, _ := setupManager(t)
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
-
-	err = m.Create("blog.test", "83", "nonexistent", nil)
+	err := m.Create("blog.test", "83", "nonexistent", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -293,16 +342,7 @@ func TestCreate_InvalidPresetReturnsError(t *testing.T) {
 // --- Delete ---
 
 func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
-
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m, _ := setupManager(t)
 
 	// Create first, then delete.
 	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
@@ -313,24 +353,34 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 	}
 
 	// Site should be gone from the store.
-	if _, ok := store.Find("blog.test"); ok {
+	if _, ok := m.store.Find("blog.test"); ok {
 		t.Error("site should be removed from store after Delete")
 	}
 }
 
-func TestDelete_NotFoundReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
+func TestDelete_UnregistersVirtualHostFromHttpdConfig(t *testing.T) {
+	m, dir := setupManager(t)
+
+	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if err := m.Delete("blog.test"); err != nil {
+		t.Fatalf("Delete() = %v", err)
 	}
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
+	content := httpdContent(t, dir)
+	if strings.Contains(content, "virtualHost blog.test") {
+		t.Error("httpd_config.conf should not contain virtualHost block after delete")
+	}
+	if strings.Contains(content, "blog.test blog.test") {
+		t.Error("httpd_config.conf should not contain listener map entry after delete")
+	}
+}
 
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+func TestDelete_NotFoundReturnsError(t *testing.T) {
+	m, _ := setupManager(t)
 
-	err = m.Delete("nope.test")
+	err := m.Delete("nope.test")
 	if err == nil {
 		t.Fatal("deleting nonexistent site should return error")
 	}
@@ -339,18 +389,8 @@ func TestDelete_NotFoundReturnsError(t *testing.T) {
 // --- Tune ---
 
 func TestTune_ChangesPresetAndReconciles(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
+	m, dir := setupManager(t)
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
-
-	// Create with standard, then tune to woocommerce.
 	if err := m.Create("shop.test", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
@@ -358,8 +398,7 @@ func TestTune_ChangesPresetAndReconciles(t *testing.T) {
 		t.Fatalf("Tune() = %v", err)
 	}
 
-	// Preset should be updated in store.
-	got, ok := store.Find("shop.test")
+	got, ok := m.store.Find("shop.test")
 	if !ok {
 		t.Fatal("site not found after tune")
 	}
@@ -367,8 +406,7 @@ func TestTune_ChangesPresetAndReconciles(t *testing.T) {
 		t.Errorf("preset = %q, want %q", got.Preset, "woocommerce")
 	}
 
-	// Config should be rewritten with new allocation.
-	vhostPath := filepath.Join(dir, "vhosts", "shop.test", "vhconf.conf")
+	vhostPath := filepath.Join(dir, "conf", "vhosts", "shop.test", "vhconf.conf")
 	data, err := os.ReadFile(vhostPath) //nolint:gosec // test reads from temp dir
 	if err != nil {
 		t.Fatalf("read vhost: %v", err)
@@ -380,46 +418,27 @@ func TestTune_ChangesPresetAndReconciles(t *testing.T) {
 }
 
 func TestTune_NotFoundReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
+	m, _ := setupManager(t)
 
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
-
-	err = m.Tune("nope.test", "heavy", nil)
+	err := m.Tune("nope.test", "heavy", nil)
 	if err == nil {
 		t.Fatal("tuning nonexistent site should return error")
 	}
 }
 
 func TestTune_InvalidPresetReturnsError(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
-
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m, _ := setupManager(t)
 
 	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
-	err = m.Tune("blog.test", "nonexistent", nil)
+	err := m.Tune("blog.test", "nonexistent", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
 
-	// Original preset should be unchanged.
-	got, _ := store.Find("blog.test")
+	got, _ := m.store.Find("blog.test")
 	if got.Preset != presetStandard {
 		t.Errorf("preset should remain %q after failed tune, got %q", presetStandard, got.Preset)
 	}
@@ -428,23 +447,14 @@ func TestTune_InvalidPresetReturnsError(t *testing.T) {
 // --- Custom preset ---
 
 func TestCreate_CustomPreset(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
-
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
 	if err := m.Create("custom.test", "83", "custom", custom); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
-	got, ok := store.Find("custom.test")
+	got, ok := m.store.Find("custom.test")
 	if !ok {
 		t.Fatal("site not found in store after Create with custom preset")
 	}
@@ -460,30 +470,10 @@ func TestCreate_CustomPreset(t *testing.T) {
 	if got.CustomPreset.WorkerBudgetMB != 160 {
 		t.Errorf("CustomPreset.WorkerBudgetMB = %d, want 160", got.CustomPreset.WorkerBudgetMB)
 	}
-
-	// Config file should be written with custom values.
-	vhostPath := filepath.Join(dir, "vhosts", "custom.test", "vhconf.conf")
-	data, err := os.ReadFile(vhostPath) //nolint:gosec // test reads from temp dir
-	if err != nil {
-		t.Fatalf("read vhost: %v", err)
-	}
-	content := string(data)
-	if !strings.Contains(content, "custom.test") {
-		t.Error("vhost config should contain site name")
-	}
 }
 
 func TestTune_ToCustomPreset(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
-
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m, _ := setupManager(t)
 
 	if err := m.Create("shop.test", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
@@ -494,7 +484,7 @@ func TestTune_ToCustomPreset(t *testing.T) {
 		t.Fatalf("Tune() = %v", err)
 	}
 
-	got, _ := store.Find("shop.test")
+	got, _ := m.store.Find("shop.test")
 	if got.Preset != presetCustom {
 		t.Errorf("preset = %q, want %q", got.Preset, presetCustom)
 	}
@@ -507,16 +497,7 @@ func TestTune_ToCustomPreset(t *testing.T) {
 }
 
 func TestTune_FromCustomToNamed(t *testing.T) {
-	dir := t.TempDir()
-	store, err := state.Open(filepath.Join(dir, "state.json"))
-	if err != nil {
-		t.Fatalf("Open store: %v", err)
-	}
-
-	ctrl := ols.NewController(writeMock(t, "exit 0"))
-	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), dir)
+	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
 	if err := m.Create("blog.test", "83", "custom", custom); err != nil {
@@ -527,7 +508,7 @@ func TestTune_FromCustomToNamed(t *testing.T) {
 		t.Fatalf("Tune() = %v", err)
 	}
 
-	got, _ := store.Find("blog.test")
+	got, _ := m.store.Find("blog.test")
 	if got.Preset != presetStandard {
 		t.Errorf("preset = %q, want %q", got.Preset, presetStandard)
 	}

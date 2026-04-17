@@ -24,23 +24,26 @@ type Manager struct {
 	specs   system.Specs
 	policy  allocator.Policy
 	confDir string
+	webRoot string
 }
 
 // NewManager creates a Manager with the given dependencies. confDir is the
 // base directory for rendered OLS configs (e.g., /usr/local/lsws/conf).
-func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, policy allocator.Policy, confDir string) *Manager {
+// webRoot is the base directory for site document roots (e.g., /var/www).
+func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, policy allocator.Policy, confDir, webRoot string) *Manager {
 	return &Manager{
 		store:   store,
 		ols:     ctrl,
 		specs:   specs,
 		policy:  policy,
 		confDir: confDir,
+		webRoot: webRoot,
 	}
 }
 
 // Reconcile recomputes allocations for all sites, renders their OLS configs,
-// validates the configuration, and triggers a graceful OLS reload. With zero
-// sites it returns immediately without touching OLS.
+// registers virtualHosts in httpd_config.conf, and triggers a graceful OLS
+// reload. With zero sites it returns immediately without touching OLS.
 func (m *Manager) Reconcile() error {
 	sites := m.store.Sites()
 	if len(sites) == 0 {
@@ -72,10 +75,11 @@ func (m *Manager) Reconcile() error {
 			return fmt.Errorf("site: create vhost dir %s: %w", vhostDir, err)
 		}
 
+		siteRoot := filepath.Join(m.webRoot, a.Site)
 		data := template.VHostData{
 			Site:             a.Site,
 			Domain:           a.Site,
-			WebRoot:          filepath.Join("/var/www", a.Site),
+			WebRoot:          siteRoot,
 			LogDir:           "/var/log/lsws",
 			PHPVer:           s.PHPVersion,
 			Children:         a.Children,
@@ -92,6 +96,13 @@ func (m *Manager) Reconcile() error {
 		vhostPath := filepath.Join(vhostDir, "vhconf.conf")
 		if err := os.WriteFile(vhostPath, []byte(content), 0o644); err != nil { //nolint:gosec // config file, not secret
 			return fmt.Errorf("site: write %s: %w", vhostPath, err)
+		}
+
+		// Register virtualHost block and listener map entry in httpd_config.conf.
+		confFile := "conf/vhosts/" + a.Site + "/vhconf.conf"
+		httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
+		if err := ols.RegisterVHost(httpdConfPath, a.Site, siteRoot, confFile); err != nil {
+			return fmt.Errorf("site: register vhost %s: %w", a.Site, err)
 		}
 	}
 
