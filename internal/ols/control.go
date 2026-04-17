@@ -12,8 +12,6 @@ import (
 const DefaultBinPath = "/usr/local/lsws/bin/lswsctrl"
 
 var (
-	// ErrConfigInvalid is returned when the OLS configuration fails validation.
-	ErrConfigInvalid = errors.New("ols: configuration validation failed")
 	// ErrReloadFailed is returned when a graceful reload cannot be completed.
 	ErrReloadFailed = errors.New("ols: graceful reload failed")
 )
@@ -36,13 +34,9 @@ func NewController(binPath string) *LSControl {
 	return &LSControl{binPath: binPath}
 }
 
-// Validate runs the OLS config test subcommand.
+// Validate is a no-op because OpenLiteSpeed has no config-test subcommand
+// (unlike nginx -t). Bad configs are caught by GracefulReload instead.
 func (c *LSControl) Validate() error {
-	cmd := exec.Command(c.binPath, "test") //nolint:gosec // binPath set by CLI, not user input
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%w: %s", ErrConfigInvalid, out)
-	}
 	return nil
 }
 
