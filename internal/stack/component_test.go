@@ -68,36 +68,98 @@ func TestComponent_Install_WrapsError(t *testing.T) {
 	}
 }
 
-func TestComponent_Uninstall_DelegatesToUninstallFn(t *testing.T) {
+func TestComponent_Install_NilIsNoop(t *testing.T) {
+	c := Component{Name: "test"}
+	if err := c.Install(&mockRunner{}); err != nil {
+		t.Fatalf("Install() with nil InstallFn = %v", err)
+	}
+}
+
+func TestComponent_Purge_DelegatesToPurgeFn(t *testing.T) {
 	called := false
 	c := Component{
 		Name: "test",
-		UninstallFn: func(Runner) error {
+		PurgeFn: func(Runner) error {
 			called = true
 			return nil
 		},
 	}
-	if err := c.Uninstall(&mockRunner{}); err != nil {
-		t.Fatalf("Uninstall() = %v", err)
+	if err := c.Purge(&mockRunner{}); err != nil {
+		t.Fatalf("Purge() = %v", err)
 	}
 	if !called {
-		t.Error("UninstallFn was not called")
+		t.Error("PurgeFn was not called")
 	}
 }
 
-func TestComponent_Uninstall_WrapsError(t *testing.T) {
+func TestComponent_Purge_WrapsError(t *testing.T) {
 	c := Component{
 		Name: "redis",
-		UninstallFn: func(Runner) error {
+		PurgeFn: func(Runner) error {
 			return errors.New("purge failed")
 		},
 	}
-	err := c.Uninstall(&mockRunner{})
+	err := c.Purge(&mockRunner{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	if !strings.Contains(err.Error(), "redis") {
 		t.Errorf("error should contain component name, got %q", err.Error())
+	}
+}
+
+func TestComponent_Purge_NilIsNoop(t *testing.T) {
+	c := Component{Name: "test"}
+	if err := c.Purge(&mockRunner{}); err != nil {
+		t.Fatalf("Purge() with nil PurgeFn = %v", err)
+	}
+}
+
+func TestComponent_Upgrade_DelegatesToUpgradeFn(t *testing.T) {
+	called := false
+	c := Component{
+		Name: "test",
+		UpgradeFn: func(Runner) error {
+			called = true
+			return nil
+		},
+	}
+	if err := c.Upgrade(&mockRunner{}); err != nil {
+		t.Fatalf("Upgrade() = %v", err)
+	}
+	if !called {
+		t.Error("UpgradeFn was not called")
+	}
+}
+
+func TestComponent_Upgrade_NilIsNoop(t *testing.T) {
+	c := Component{Name: "test"}
+	if err := c.Upgrade(&mockRunner{}); err != nil {
+		t.Fatalf("Upgrade() with nil UpgradeFn = %v", err)
+	}
+}
+
+func TestComponent_Remove_DelegatesToRemoveFn(t *testing.T) {
+	called := false
+	c := Component{
+		Name: "test",
+		RemoveFn: func(Runner) error {
+			called = true
+			return nil
+		},
+	}
+	if err := c.Remove(&mockRunner{}); err != nil {
+		t.Fatalf("Remove() = %v", err)
+	}
+	if !called {
+		t.Error("RemoveFn was not called")
+	}
+}
+
+func TestComponent_Remove_NilIsNoop(t *testing.T) {
+	c := Component{Name: "test"}
+	if err := c.Remove(&mockRunner{}); err != nil {
+		t.Fatalf("Remove() with nil RemoveFn = %v", err)
 	}
 }
 
@@ -118,15 +180,87 @@ func TestComponent_Verify_DelegatesToVerifyFn(t *testing.T) {
 	}
 }
 
+func TestComponent_Start_NilIsNoop(t *testing.T) {
+	c := Component{Name: "wpcli"}
+	if err := c.Start(&mockRunner{}); err != nil {
+		t.Fatalf("Start() with nil StartFn = %v", err)
+	}
+}
+
+func TestComponent_Stop_NilIsNoop(t *testing.T) {
+	c := Component{Name: "wpcli"}
+	if err := c.Stop(&mockRunner{}); err != nil {
+		t.Fatalf("Stop() with nil StopFn = %v", err)
+	}
+}
+
+func TestComponent_Restart_NilIsNoop(t *testing.T) {
+	c := Component{Name: "wpcli"}
+	if err := c.Restart(&mockRunner{}); err != nil {
+		t.Fatalf("Restart() with nil RestartFn = %v", err)
+	}
+}
+
+func TestComponent_Reload_NilIsNoop(t *testing.T) {
+	c := Component{Name: "wpcli"}
+	if err := c.Reload(&mockRunner{}); err != nil {
+		t.Fatalf("Reload() with nil ReloadFn = %v", err)
+	}
+}
+
+func TestComponent_Start_WrapsError(t *testing.T) {
+	c := Component{
+		Name: "ols",
+		StartFn: func(Runner) error {
+			return errors.New("already running")
+		},
+	}
+	err := c.Start(&mockRunner{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "ols") {
+		t.Errorf("error should contain component name, got %q", err.Error())
+	}
+}
+
+func TestComponent_Migrate_NilReturnsError(t *testing.T) {
+	c := Component{Name: "redis"}
+	err := c.Migrate(&mockRunner{}, "11.8")
+	if err == nil {
+		t.Fatal("expected error for component without MigrateFn")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Errorf("error should say not supported, got %q", err.Error())
+	}
+}
+
+func TestComponent_Migrate_DelegatesToMigrateFn(t *testing.T) {
+	var gotTarget string
+	c := Component{
+		Name: "mariadb",
+		MigrateFn: func(r Runner, target string) error {
+			gotTarget = target
+			return nil
+		},
+	}
+	if err := c.Migrate(&mockRunner{}, "11.8"); err != nil {
+		t.Fatalf("Migrate() = %v", err)
+	}
+	if gotTarget != "11.8" {
+		t.Errorf("target = %q, want %q", gotTarget, "11.8")
+	}
+}
+
 // --- Registry and Lookup ---
 
 func TestRegistry_ReturnsAllComponents(t *testing.T) {
-	components := Registry("81")
+	components := Registry([]string{"81"})
 	names := make([]string, len(components))
 	for i, c := range components {
 		names[i] = c.Name
 	}
-	for _, want := range []string{"ols", "lsphp", "mariadb", "redis"} {
+	for _, want := range []string{"ols", "lsphp81", "mariadb", "redis", "wpcli", "composer"} {
 		found := false
 		for _, n := range names {
 			if n == want {
@@ -140,15 +274,28 @@ func TestRegistry_ReturnsAllComponents(t *testing.T) {
 	}
 }
 
+func TestRegistry_MultiplePHPVersions(t *testing.T) {
+	components := Registry([]string{"81", "83", "84"})
+	lsphpCount := 0
+	for _, c := range components {
+		if strings.HasPrefix(c.Name, "lsphp") {
+			lsphpCount++
+		}
+	}
+	if lsphpCount != 3 {
+		t.Errorf("expected 3 LSPHP components, got %d", lsphpCount)
+	}
+}
+
 func TestLookup_AllWhenEmpty(t *testing.T) {
-	components := Lookup(nil, "81")
-	if len(components) != 4 {
-		t.Errorf("Lookup(nil) returned %d components, want 4", len(components))
+	components := Lookup(nil, []string{"81"})
+	if len(components) != 6 {
+		t.Errorf("Lookup(nil) returned %d components, want 6", len(components))
 	}
 }
 
 func TestLookup_Specific(t *testing.T) {
-	components := Lookup([]string{"ols", "redis"}, "81")
+	components := Lookup([]string{"ols", "redis"}, []string{"81"})
 	if len(components) != 2 {
 		t.Fatalf("Lookup returned %d components, want 2", len(components))
 	}
@@ -161,8 +308,21 @@ func TestLookup_Specific(t *testing.T) {
 }
 
 func TestLookup_EmptyForUnknown(t *testing.T) {
-	components := Lookup([]string{"nginx"}, "81")
+	components := Lookup([]string{"nginx"}, []string{"81"})
 	if len(components) != 0 {
 		t.Errorf("Lookup(unknown) returned %d components, want 0", len(components))
+	}
+}
+
+func TestLookup_LSPHPByVersion(t *testing.T) {
+	components := Lookup([]string{"lsphp83", "lsphp84"}, []string{"81", "83", "84"})
+	if len(components) != 2 {
+		t.Fatalf("Lookup returned %d components, want 2", len(components))
+	}
+	if components[0].Name != "lsphp83" {
+		t.Errorf("first = %q, want lsphp83", components[0].Name)
+	}
+	if components[1].Name != "lsphp84" {
+		t.Errorf("second = %q, want lsphp84", components[1].Name)
 	}
 }

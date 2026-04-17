@@ -39,14 +39,38 @@ func Redis() Component {
 			}
 			return nil
 		},
-		UninstallFn: func(r Runner) error {
+		UpgradeFn: func(r Runner) error {
+			if err := r.Run("apt-get", "update", "-y"); err != nil {
+				return fmt.Errorf("update: %w", err)
+			}
+			return r.Run("apt-get", "upgrade", "-y", "redis-server")
+		},
+		RemoveFn: func(r Runner) error {
+			return r.Run("apt-get", "remove", "-y", "redis-server", "redis-tools")
+		},
+		PurgeFn: func(r Runner) error {
 			if err := r.Run("systemctl", "stop", "redis-server"); err != nil {
 				return fmt.Errorf("stop service: %w", err)
 			}
 			if err := r.Run("apt-get", "purge", "-y", "redis"); err != nil {
 				return fmt.Errorf("purge package: %w", err)
 			}
-			return r.Run("apt-get", "autoremove", "-y")
+			if err := r.Run("rm", "-rf", "/var/lib/redis"); err != nil {
+				return fmt.Errorf("remove data dir: %w", err)
+			}
+			if err := r.Run("rm", "-rf", "/etc/redis"); err != nil {
+				return fmt.Errorf("remove config dir: %w", err)
+			}
+			if err := r.Run("rm", "-f", "/usr/share/keyrings/redis-archive-keyring.gpg"); err != nil {
+				return fmt.Errorf("remove gpg key: %w", err)
+			}
+			if err := r.Run("rm", "-f", "/etc/apt/sources.list.d/redis.list"); err != nil {
+				return fmt.Errorf("remove apt source: %w", err)
+			}
+			if err := r.Run("apt-get", "autoremove", "-y"); err != nil {
+				return fmt.Errorf("autoremove: %w", err)
+			}
+			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
 			out, err := r.Output("redis-cli", "ping")
@@ -64,6 +88,28 @@ func Redis() Component {
 				return "", err
 			}
 			return strings.TrimSpace(out), nil
+		},
+		StartFn: func(r Runner) error {
+			return r.Run("systemctl", "start", "redis-server")
+		},
+		StopFn: func(r Runner) error {
+			return r.Run("systemctl", "stop", "redis-server")
+		},
+		RestartFn: func(r Runner) error {
+			return r.Run("systemctl", "restart", "redis-server")
+		},
+		ReloadFn: func(r Runner) error {
+			return r.Run("systemctl", "reload", "redis-server")
+		},
+		ActiveFn: func(r Runner) error {
+			out, err := r.Output("redis-cli", "ping")
+			if err != nil {
+				return err
+			}
+			if !strings.HasPrefix(out, "PONG") {
+				return fmt.Errorf("redis not responding")
+			}
+			return nil
 		},
 	}
 }

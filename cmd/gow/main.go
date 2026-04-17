@@ -33,11 +33,18 @@ type siteFlags struct {
 }
 
 type stackFlags struct {
-	ols     bool
-	lsphp   bool
-	mariadb bool
-	redis   bool
-	php     string
+	ols      bool
+	php      bool
+	php81    bool
+	php82    bool
+	php83    bool
+	php84    bool
+	php85    bool
+	mariadb  bool
+	redis    bool
+	wpcli    bool
+	composer bool
+	target   string // --target for migrate
 }
 
 func main() {
@@ -68,7 +75,7 @@ func main() {
 			return runCreate(cfg, createFlags, args[0])
 		},
 	}
-	createCmd.Flags().StringVar(&createFlags.preset, "preset", "standard", "Resource preset (lite/standard/business/woocommerce/heavy)")
+	createCmd.Flags().StringVar(&createFlags.preset, "preset", "standard", "Resource preset (lite/standard/business/woocommerce/heavy/custom)")
 	createCmd.Flags().StringVar(&createFlags.php, "php", "83", "PHP major version")
 	createCmd.Flags().UintVar(&createFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (only with --preset custom)")
 	createCmd.Flags().UintVar(&createFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (only with --preset custom)")
@@ -105,48 +112,118 @@ func main() {
 
 	siteCmd.AddCommand(createCmd, deleteCmd, listCmd, tuneCmd)
 
-	var stackInstallFlags stackFlags
+	// --- Stack commands ---
+
+	stackCmd := &cobra.Command{
+		Use:   "stack",
+		Short: "Manage the server stack (OLS, LSPHP, MariaDB, Redis, WP-CLI, Composer)",
+	}
+
+	var installFlags stackFlags
 	stackInstallCmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install stack components",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runStackInstall(stackInstallFlags)
+			return runStackOp(installFlags, stackOpInstall)
 		},
 	}
-	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.ols, "ols", false, "Install OpenLiteSpeed")
-	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.lsphp, "lsphp", false, "Install LSPHP")
-	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.mariadb, "mariadb", false, "Install MariaDB")
-	stackInstallCmd.Flags().BoolVar(&stackInstallFlags.redis, "redis", false, "Install Redis")
-	stackInstallCmd.Flags().StringVar(&stackInstallFlags.php, "php", "81", "PHP major version (81-85)")
+	addStackFlags(stackInstallCmd, &installFlags)
 
-	var stackUninstallFlags stackFlags
-	stackUninstallCmd := &cobra.Command{
-		Use:   "uninstall",
-		Short: "Uninstall stack components",
+	var upgradeFlags stackFlags
+	stackUpgradeCmd := &cobra.Command{
+		Use:   "upgrade",
+		Short: "Upgrade stack components",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runStackUninstall(stackUninstallFlags)
+			return runStackOp(upgradeFlags, stackOpUpgrade)
 		},
 	}
-	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.ols, "ols", false, "Uninstall OpenLiteSpeed")
-	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.lsphp, "lsphp", false, "Uninstall LSPHP")
-	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.mariadb, "mariadb", false, "Uninstall MariaDB")
-	stackUninstallCmd.Flags().BoolVar(&stackUninstallFlags.redis, "redis", false, "Uninstall Redis")
-	stackUninstallCmd.Flags().StringVar(&stackUninstallFlags.php, "php", "81", "PHP major version (81-85)")
+	addStackFlags(stackUpgradeCmd, &upgradeFlags)
+
+	var migrateFlags stackFlags
+	stackMigrateCmd := &cobra.Command{
+		Use:   "migrate",
+		Short: "Migrate MariaDB to a new major version",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackMigrate(migrateFlags)
+		},
+	}
+	addStackFlags(stackMigrateCmd, &migrateFlags)
+	stackMigrateCmd.Flags().StringVar(&migrateFlags.target, "target", "", "Target MariaDB version (e.g. 11.8)")
+
+	var removeFlags stackFlags
+	stackRemoveCmd := &cobra.Command{
+		Use:   "remove",
+		Short: "Remove stack packages (keeps configs)",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackOp(removeFlags, stackOpRemove)
+		},
+	}
+	addStackFlags(stackRemoveCmd, &removeFlags)
+
+	var purgeFlags stackFlags
+	stackPurgeCmd := &cobra.Command{
+		Use:   "purge",
+		Short: "Purge stack packages and configs",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackOp(purgeFlags, stackOpPurge)
+		},
+	}
+	addStackFlags(stackPurgeCmd, &purgeFlags)
+
+	var startFlags stackFlags
+	stackStartCmd := &cobra.Command{
+		Use:   "start",
+		Short: "Start stack services",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackOp(startFlags, stackOpStart)
+		},
+	}
+	addStackFlags(stackStartCmd, &startFlags)
+
+	var stopFlags stackFlags
+	stackStopCmd := &cobra.Command{
+		Use:   "stop",
+		Short: "Stop stack services",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackOp(stopFlags, stackOpStop)
+		},
+	}
+	addStackFlags(stackStopCmd, &stopFlags)
+
+	var restartFlags stackFlags
+	stackRestartCmd := &cobra.Command{
+		Use:   "restart",
+		Short: "Restart stack services",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackOp(restartFlags, stackOpRestart)
+		},
+	}
+	addStackFlags(stackRestartCmd, &restartFlags)
+
+	var reloadFlags stackFlags
+	stackReloadCmd := &cobra.Command{
+		Use:   "reload",
+		Short: "Reload stack services",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runStackOp(reloadFlags, stackOpReload)
+		},
+	}
+	addStackFlags(stackReloadCmd, &reloadFlags)
 
 	stackStatusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show stack component status",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runStackStatus(stackInstallFlags.php, cmd.OutOrStdout())
+			return runStackStatus(cmd.OutOrStdout())
 		},
 	}
-	stackStatusCmd.Flags().StringVar(&stackInstallFlags.php, "php", "81", "PHP major version (81-85)")
 
-	stackCmd := &cobra.Command{
-		Use:   "stack",
-		Short: "Manage the server stack (OLS, LSPHP, MariaDB, Redis)",
-	}
-	stackCmd.AddCommand(stackInstallCmd, stackUninstallCmd, stackStatusCmd)
+	stackCmd.AddCommand(
+		stackInstallCmd, stackUpgradeCmd, stackMigrateCmd,
+		stackRemoveCmd, stackPurgeCmd,
+		stackStartCmd, stackStopCmd, stackRestartCmd, stackReloadCmd,
+		stackStatusCmd,
+	)
 
 	presetsCmd := &cobra.Command{
 		Use:   "presets",
@@ -343,26 +420,96 @@ func resolveCustom(preset string, phpMem, workerBudget uint) (*state.CustomPrese
 	return &state.CustomPreset{PHPMemoryMB: uint64(phpMem), WorkerBudgetMB: uint64(workerBudget)}, nil
 }
 
-func runStackInstall(sf stackFlags) error {
-	phpVer := sf.php
-	if phpVer == "" {
-		phpVer = "81"
+// --- Stack operations ---
+
+type stackOp struct {
+	name     string
+	fn       func(stack.Component, stack.Runner) error
+	reverse  bool
+	validate bool    // run Verify before fn, skip if not installed/not installed
+	service  bool    // skip components without service functions (HasService)
+}
+
+var (
+	stackOpInstall = stackOp{
+		name:     "install",
+		fn:       func(c stack.Component, r stack.Runner) error { return c.Install(r) },
+		validate: true,
 	}
-	if err := validatePHPVersion(phpVer); err != nil {
-		return err
+	stackOpUpgrade = stackOp{
+		name: "upgrade",
+		fn:   func(c stack.Component, r stack.Runner) error { return c.Upgrade(r) },
 	}
-	names := resolveStackFlags(sf)
-	components := stack.Lookup(names, phpVer)
+	stackOpRemove = stackOp{
+		name:     "remove",
+		fn:       func(c stack.Component, r stack.Runner) error { return c.Remove(r) },
+		reverse:  true,
+		validate: true,
+	}
+	stackOpPurge = stackOp{
+		name:     "purge",
+		fn:       func(c stack.Component, r stack.Runner) error { return c.Purge(r) },
+		reverse:  true,
+		validate: true,
+	}
+	stackOpStart = stackOp{
+		name:    "start",
+		fn:      func(c stack.Component, r stack.Runner) error { return c.Start(r) },
+		service: true,
+	}
+	stackOpStop = stackOp{
+		name:    "stop",
+		fn:      func(c stack.Component, r stack.Runner) error { return c.Stop(r) },
+		service: true,
+	}
+	stackOpRestart = stackOp{
+		name:    "restart",
+		fn:      func(c stack.Component, r stack.Runner) error { return c.Restart(r) },
+		service: true,
+	}
+	stackOpReload = stackOp{
+		name:    "reload",
+		fn:      func(c stack.Component, r stack.Runner) error { return c.Reload(r) },
+		service: true,
+	}
+)
+
+func runStackOp(sf stackFlags, op stackOp) error {
+	names, phpVersions := resolveStackFlags(sf)
+	components := stack.Lookup(names, phpVersions)
 	r := stack.NewShellRunner()
-	// Repair dpkg if previously interrupted (e.g. Ctrl+C during purge).
+
 	_ = r.Run("dpkg", "--configure", "-a")
-	for _, c := range components {
-		if err := c.Verify(r); err == nil {
-			fmt.Printf("  %s: already installed, skipping\n", c.Name)
+
+	iter := components
+	if op.reverse {
+		iter = reverseComponents(components)
+	}
+
+	for _, c := range iter {
+		if op.service && !c.HasService() {
 			continue
 		}
-		fmt.Printf("Installing %s...\n", c.Name)
-		if err := c.Install(r); err != nil {
+		if op.service {
+			if err := c.Verify(r); err != nil {
+				fmt.Printf("  %s: not installed, skipping\n", c.Name)
+				continue
+			}
+		}
+		if op.validate && op.reverse {
+			if err := c.Verify(r); err != nil {
+				fmt.Printf("  %s: not installed, skipping\n", c.Name)
+				continue
+			}
+		}
+		if op.validate && !op.reverse {
+			if err := c.Verify(r); err == nil {
+				fmt.Printf("  %s: already installed, skipping\n", c.Name)
+				continue
+			}
+		}
+		fmt.Printf("%s %s...\n", capitalize(op.name), c.Name)
+		if err := op.fn(c, r); err != nil {
 			return err
 		}
 		fmt.Printf("  %s: OK\n", c.Name)
@@ -370,37 +517,34 @@ func runStackInstall(sf stackFlags) error {
 	return nil
 }
 
-func runStackUninstall(sf stackFlags) error {
-	phpVer := sf.php
-	if phpVer == "" {
-		phpVer = "81"
+func runStackMigrate(sf stackFlags) error {
+	if sf.target == "" {
+		return fmt.Errorf("required flag: --target (e.g. --target 11.8)")
 	}
-	names := resolveStackFlags(sf)
-	components := stack.Lookup(names, phpVer)
+	names, _ := resolveStackFlags(sf)
+	if len(names) == 0 {
+		names = []string{"mariadb"}
+	}
+
 	r := stack.NewShellRunner()
-	// Repair dpkg if previously interrupted (e.g. Ctrl+C during purge).
-	_ = r.Run("dpkg", "--configure", "-a")
-	// Uninstall in reverse order.
-	for i := len(components) - 1; i >= 0; i-- {
-		c := components[i]
-		if err := c.Verify(r); err != nil {
-			fmt.Printf("  %s: not installed, skipping\n", c.Name)
+	components := stack.Lookup(names, []string{"81"})
+
+	for _, c := range components {
+		if c.MigrateFn == nil {
+			fmt.Printf("  %s: migrate not supported, skipping\n", c.Name)
 			continue
 		}
-		fmt.Printf("Uninstalling %s...\n", c.Name)
-		if err := c.Uninstall(r); err != nil {
+		fmt.Printf("Migrating %s to %s...\n", c.Name, sf.target)
+		if err := c.Migrate(r, sf.target); err != nil {
 			return err
 		}
-		fmt.Printf("  %s: removed\n", c.Name)
+		fmt.Printf("  %s: migrated to %s\n", c.Name, sf.target)
 	}
 	return nil
 }
 
-func runStackStatus(phpVer string, w io.Writer) error {
-	if phpVer == "" {
-		phpVer = "81"
-	}
-	components := stack.Registry(phpVer)
+func runStackStatus(w io.Writer) error {
+	components := stack.Registry([]string{"81"})
 	r := stack.NewShellRunner()
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -411,18 +555,40 @@ func runStackStatus(phpVer string, w io.Writer) error {
 			continue
 		}
 		detail, _ := c.Status(r)
-		fmt.Fprintf(tw, "%s\tinstalled\t%s\n", c.Name, detail)
+		active, _ := c.Active(r)
+		if c.HasService() {
+			if active {
+				fmt.Fprintf(tw, "%s\tactive\t%s\n", c.Name, detail)
+			} else {
+				fmt.Fprintf(tw, "%s\tstopped\t%s\n", c.Name, detail)
+			}
+		} else {
+			fmt.Fprintf(tw, "%s\tinstalled\t%s\n", c.Name, detail)
+		}
 	}
 	return tw.Flush()
 }
 
-func resolveStackFlags(sf stackFlags) []string {
+func addStackFlags(cmd *cobra.Command, sf *stackFlags) {
+	cmd.Flags().BoolVar(&sf.ols, "ols", false, "OpenLiteSpeed")
+	cmd.Flags().BoolVar(&sf.php, "php", false, "Default PHP (8.1)")
+	cmd.Flags().BoolVar(&sf.php81, "php81", false, "LSPHP 8.1")
+	cmd.Flags().BoolVar(&sf.php82, "php82", false, "LSPHP 8.2")
+	cmd.Flags().BoolVar(&sf.php83, "php83", false, "LSPHP 8.3")
+	cmd.Flags().BoolVar(&sf.php84, "php84", false, "LSPHP 8.4")
+	cmd.Flags().BoolVar(&sf.php85, "php85", false, "LSPHP 8.5")
+	cmd.Flags().BoolVar(&sf.mariadb, "mariadb", false, "MariaDB")
+	cmd.Flags().BoolVar(&sf.redis, "redis", false, "Redis")
+	cmd.Flags().BoolVar(&sf.wpcli, "wpcli", false, "WP-CLI")
+	cmd.Flags().BoolVar(&sf.composer, "composer", false, "Composer")
+}
+
+func resolveStackFlags(sf stackFlags) ([]string, []string) {
 	var names []string
+	var phpVersions []string
+
 	if sf.ols {
 		names = append(names, "ols")
-	}
-	if sf.lsphp {
-		names = append(names, "lsphp")
 	}
 	if sf.mariadb {
 		names = append(names, "mariadb")
@@ -430,16 +596,65 @@ func resolveStackFlags(sf stackFlags) []string {
 	if sf.redis {
 		names = append(names, "redis")
 	}
-	return names // empty => all components
-}
+	if sf.wpcli {
+		names = append(names, "wpcli")
+	}
+	if sf.composer {
+		names = append(names, "composer")
+	}
 
-func validatePHPVersion(v string) error {
-	for _, valid := range []string{"81", "82", "83", "84", "85"} {
-		if v == valid {
-			return nil
+	seen := make(map[string]bool)
+	addVer := func(v string) {
+		if !seen[v] {
+			seen[v] = true
+			phpVersions = append(phpVersions, v)
 		}
 	}
-	return fmt.Errorf("unsupported PHP version %q; choose from 81, 82, 83, 84, 85", v)
+	if sf.php {
+		addVer("81")
+	}
+	if sf.php81 {
+		addVer("81")
+	}
+	if sf.php82 {
+		addVer("82")
+	}
+	if sf.php83 {
+		addVer("83")
+	}
+	if sf.php84 {
+		addVer("84")
+	}
+	if sf.php85 {
+		addVer("85")
+	}
+
+	// If any component flag was set but no PHP, no LSPHP.
+	// If no flags at all, default to PHP 81.
+	if len(names) == 0 && len(phpVersions) == 0 {
+		phpVersions = []string{"81"}
+	}
+
+	// If component flags set but no PHP, skip LSPHP (user chose specific non-PHP components).
+	// If no component flags but PHP set, include only LSPHP versions.
+
+	return names, phpVersions
+}
+
+func reverseComponents(cs []stack.Component) []stack.Component {
+	n := len(cs)
+	out := make([]stack.Component, n)
+	for i, c := range cs {
+		out[n-1-i] = c
+	}
+	return out
+}
+
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return string(s[0]-32) + s[1:]
 }
 
 func formatSites(w io.Writer, sites []state.Site) error {

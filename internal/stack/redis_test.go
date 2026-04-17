@@ -14,22 +14,18 @@ func TestRedis_Install_AddsKeySourceAndInstalls(t *testing.T) {
 		t.Fatalf("Install() = %v", err)
 	}
 
-	// Expected: GPG key setup, apt source, apt-get update, apt-get install, systemctl enable/start
 	if len(calls) < 4 {
 		t.Fatalf("expected at least 4 calls, got %d", len(calls))
 	}
 
-	// GPG key via sh
 	if calls[0].name != "sh" {
 		t.Errorf("call[0].name = %q, want %q (GPG key setup)", calls[0].name, "sh")
 	}
 
-	// apt source write
 	if calls[1].name != "sh" {
 		t.Errorf("call[1].name = %q, want %q (apt source)", calls[1].name, "sh")
 	}
 
-	// apt-get install
 	foundInstall := false
 	for _, c := range calls {
 		if c.name == "apt-get" && len(c.args) > 0 && c.args[0] == "install" {
@@ -43,7 +39,6 @@ func TestRedis_Install_AddsKeySourceAndInstalls(t *testing.T) {
 		t.Error("expected apt-get install redis call")
 	}
 
-	// systemctl enable + start
 	foundEnable, foundStart := false, false
 	for _, c := range calls {
 		if c.name == "systemctl" && containsAny(c.args, "enable") && containsAny(c.args, "redis") {
@@ -70,7 +65,6 @@ func TestRedis_Install_PingReturnsPong(t *testing.T) {
 		t.Fatalf("Install() = %v", err)
 	}
 
-	// Verify should call redis-cli ping
 	found := false
 	for _, c := range calls {
 		if strings.Contains(c.name, "redis-cli") {
@@ -92,31 +86,174 @@ func TestRedis_Install_Fails(t *testing.T) {
 	}
 }
 
-func TestRedis_Uninstall_StopsAndPurges(t *testing.T) {
+func TestRedis_Purge_DeepCleans(t *testing.T) {
 	var calls []call
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Uninstall(mr); err != nil {
-		t.Fatalf("Uninstall() = %v", err)
+	if err := c.Purge(mr); err != nil {
+		t.Fatalf("Purge() = %v", err)
 	}
 
-	// Should stop first
-	if len(calls) < 1 {
-		t.Fatal("expected at least 1 call")
+	checks := map[string]bool{
+		"stop":       false,
+		"purge":      false,
+		"rm_data":    false,
+		"rm_config":  false,
+		"rm_gpg":     false,
+		"rm_source":  false,
+		"autoremove": false,
+		"update":     false,
 	}
-	if calls[0].name != "systemctl" || !containsAny(calls[0].args, "stop") {
-		t.Errorf("first call should be systemctl stop, got %v", calls[0])
-	}
-
-	// Should purge
-	foundPurge := false
 	for _, c := range calls {
+		if c.name == "systemctl" && containsAny(c.args, "stop") {
+			checks["stop"] = true
+		}
 		if c.name == "apt-get" && containsAny(c.args, "purge") {
-			foundPurge = true
+			checks["purge"] = true
+		}
+		if c.name == "rm" && containsAny(c.args, "/var/lib/redis") {
+			checks["rm_data"] = true
+		}
+		if c.name == "rm" && containsAny(c.args, "/etc/redis") {
+			checks["rm_config"] = true
+		}
+		if c.name == "rm" && containsAny(c.args, "redis-archive-keyring.gpg") {
+			checks["rm_gpg"] = true
+		}
+		if c.name == "rm" && containsAny(c.args, "redis.list") {
+			checks["rm_source"] = true
+		}
+		if c.name == "apt-get" && containsAny(c.args, "autoremove") {
+			checks["autoremove"] = true
+		}
+		if c.name == "apt-get" && containsAny(c.args, "update") {
+			checks["update"] = true
 		}
 	}
-	if !foundPurge {
-		t.Error("expected apt-get purge call")
+	for k, v := range checks {
+		if !v {
+			t.Errorf("expected %s call", k)
+		}
+	}
+}
+
+func TestRedis_Start(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if err := c.Start(mr); err != nil {
+		t.Fatalf("Start() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "systemctl" && containsAny(c.args, "start") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected systemctl start redis-server call")
+	}
+}
+
+func TestRedis_Stop(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if err := c.Stop(mr); err != nil {
+		t.Fatalf("Stop() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "systemctl" && containsAny(c.args, "stop") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected systemctl stop redis-server call")
+	}
+}
+
+func TestRedis_Restart(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if err := c.Restart(mr); err != nil {
+		t.Fatalf("Restart() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "systemctl" && containsAny(c.args, "restart") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected systemctl restart redis-server call")
+	}
+}
+
+func TestRedis_Reload(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if err := c.Reload(mr); err != nil {
+		t.Fatalf("Reload() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "systemctl" && containsAny(c.args, "reload") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected systemctl reload redis-server call")
+	}
+}
+
+func TestRedis_Upgrade(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if err := c.Upgrade(mr); err != nil {
+		t.Fatalf("Upgrade() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "apt-get" && containsAny(c.args, "upgrade") && containsAny(c.args, "redis") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected apt-get upgrade redis call")
+	}
+}
+
+func TestRedis_Remove(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if err := c.Remove(mr); err != nil {
+		t.Fatalf("Remove() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "apt-get" && containsAny(c.args, "remove") && containsAny(c.args, "redis") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected apt-get remove redis call")
 	}
 }
