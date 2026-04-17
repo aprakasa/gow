@@ -10,4 +10,5 @@ coverage.html
 .idea/
 .vscode/
 vendor/
-gow
+/gow
+/gow-linux
