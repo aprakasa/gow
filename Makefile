@@ -1,4 +1,4 @@
-.PHONY: all build test vet lint coverage clean
+.PHONY: all build test vet lint coverage clean fmt cross-build
 
 all: vet lint test build
 
@@ -17,5 +17,15 @@ lint:
 coverage:
 	go test -race -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
 
+fmt:
+	gofmt -w -s .
+
 clean:
-	rm -f gow coverage.out
+	rm -f gow gow-linux coverage.out
+
+LDFLAGS := -s -w
+GOOS = linux
+GOARCH = amd64
+
+cross-build:
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "$(LDFLAGS)" -o gow-linux ./cmd/gow/

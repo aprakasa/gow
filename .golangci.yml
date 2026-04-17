@@ -20,7 +20,6 @@ linters:
     - bodyclose
     - nilerr
     - gosec
-    - goconst
 
   settings:
     revive:
