@@ -28,15 +28,11 @@ func lsphpBinPath(ver string) string {
 	return "/usr/local/lsws/lsphp" + ver + "/bin/lsphp"
 }
 
-// ensurePHPInPath ensures a CLI PHP binary is available for tools like
-// WP-CLI and Composer. LSPHP uses the litespeed SAPI which these tools
+// ensurePHPInPath ensures a CLI PHP binary with mysqli is available for tools
+// like WP-CLI and Composer. LSPHP uses the litespeed SAPI which these tools
 // reject, so we install the system php-cli package instead.
 func ensurePHPInPath(r Runner) {
-	if out, err := r.Output("php", "-v"); err == nil && strings.Contains(out, "(cli)") {
-		return
-	}
-	_ = r.Run("rm", "-f", "/usr/local/bin/php")
-	_ = r.Run("apt-get", "install", "-y", "php-cli")
+	_ = r.Run("apt-get", "install", "-y", "php-cli", "php-mysql")
 }
 
 // LSPHP returns the LSPHP stack component for the given PHP version.
