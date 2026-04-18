@@ -15,9 +15,11 @@ import (
 // Site represents a managed WordPress site in the persistent registry.
 type Site struct {
 	Name         string        `json:"name"`
+	Type         string        `json:"type"`
 	PHPVersion   string        `json:"php_version"`
 	Preset       string        `json:"preset"`
 	CustomPreset *CustomPreset `json:"preset_custom,omitempty"`
+	Maintenance  bool          `json:"maintenance"`
 	CreatedAt    time.Time     `json:"created_at"`
 }
 
