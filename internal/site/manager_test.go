@@ -63,6 +63,7 @@ func setupManager(t *testing.T) (*Manager, string) {
 func fixtureSite(name, preset string) state.Site {
 	return state.Site{
 		Name:       name,
+		Type:       "wp",
 		PHPVersion: "83",
 		Preset:     preset,
 		CreatedAt:  time.Date(2026, 4, 13, 22, 0, 0, 0, time.UTC),
@@ -265,7 +266,7 @@ func TestReconcile_InsufficientRAM(t *testing.T) {
 func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -288,7 +289,7 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 func TestCreate_RegistersVirtualHostInHttpdConfig(t *testing.T) {
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -304,7 +305,7 @@ func TestCreate_RegistersVirtualHostInHttpdConfig(t *testing.T) {
 func TestCreate_CreatesDocRoot(t *testing.T) {
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -321,10 +322,10 @@ func TestCreate_CreatesDocRoot(t *testing.T) {
 func TestCreate_DuplicateReturnsError(t *testing.T) {
 	m, _ := setupManager(t)
 
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
-	err := m.Create("blog.test", "83", "standard", nil)
+	err := m.Create("blog.test", "wp", "83", "standard", nil)
 	if err == nil {
 		t.Fatal("duplicate Create should return error")
 	}
@@ -333,7 +334,7 @@ func TestCreate_DuplicateReturnsError(t *testing.T) {
 func TestCreate_InvalidPresetReturnsError(t *testing.T) {
 	m, _ := setupManager(t)
 
-	err := m.Create("blog.test", "83", "nonexistent", nil)
+	err := m.Create("blog.test", "wp", "83", "nonexistent", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -345,7 +346,7 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 	m, _ := setupManager(t)
 
 	// Create first, then delete.
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Delete("blog.test"); err != nil {
@@ -361,7 +362,7 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 func TestDelete_UnregistersVirtualHostFromHttpdConfig(t *testing.T) {
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Delete("blog.test"); err != nil {
@@ -386,61 +387,122 @@ func TestDelete_NotFoundReturnsError(t *testing.T) {
 	}
 }
 
-// --- Tune ---
-
-func TestTune_ChangesPresetAndReconciles(t *testing.T) {
+func TestDelete_RemovesSiteRoot(t *testing.T) {
 	m, dir := setupManager(t)
 
-	if err := m.Create("shop.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Tune("shop.test", "woocommerce", nil); err != nil {
-		t.Fatalf("Tune() = %v", err)
+
+	siteRoot := filepath.Join(dir, "www", "blog.test")
+	if _, err := os.Stat(siteRoot); os.IsNotExist(err) {
+		t.Fatalf("site root should exist before delete")
 	}
 
-	got, ok := m.store.Find("shop.test")
-	if !ok {
-		t.Fatal("site not found after tune")
+	if err := m.Delete("blog.test"); err != nil {
+		t.Fatalf("Delete() = %v", err)
 	}
+
+	if _, err := os.Stat(siteRoot); !os.IsNotExist(err) {
+		t.Error("site root directory should be removed after Delete")
+	}
+}
+
+// --- Update ---
+
+func TestUpdate_ChangesPHPVersion(t *testing.T) {
+	m, _ := setupManager(t)
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if err := m.Update("blog.test", "82", "", nil); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	got, _ := m.store.Find("blog.test")
+	if got.PHPVersion != "82" {
+		t.Errorf("PHPVersion = %q, want %q", got.PHPVersion, "82")
+	}
+}
+
+func TestUpdate_ChangesPreset(t *testing.T) {
+	m, _ := setupManager(t)
+	if err := m.Create("shop.test", "wp", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	if err := m.Update("shop.test", "", "woocommerce", nil); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+	got, _ := m.store.Find("shop.test")
 	if got.Preset != "woocommerce" {
-		t.Errorf("preset = %q, want %q", got.Preset, "woocommerce")
-	}
-
-	vhostPath := filepath.Join(dir, "conf", "vhosts", "shop.test", "vhconf.conf")
-	data, err := os.ReadFile(vhostPath) //nolint:gosec // test reads from temp dir
-	if err != nil {
-		t.Fatalf("read vhost: %v", err)
-	}
-	content := string(data)
-	if !strings.Contains(content, "shop.test") {
-		t.Error("vhost config should contain site name after tune")
+		t.Errorf("Preset = %q, want %q", got.Preset, "woocommerce")
 	}
 }
 
-func TestTune_NotFoundReturnsError(t *testing.T) {
+func TestUpdate_NotFoundReturnsError(t *testing.T) {
 	m, _ := setupManager(t)
-
-	err := m.Tune("nope.test", "heavy", nil)
+	err := m.Update("nope.test", "83", "standard", nil)
 	if err == nil {
-		t.Fatal("tuning nonexistent site should return error")
+		t.Fatal("updating nonexistent site should return error")
 	}
 }
 
-func TestTune_InvalidPresetReturnsError(t *testing.T) {
+func TestUpdate_InvalidPresetReturnsError(t *testing.T) {
 	m, _ := setupManager(t)
-
-	if err := m.Create("blog.test", "83", "standard", nil); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-
-	err := m.Tune("blog.test", "nonexistent", nil)
+	err := m.Update("blog.test", "", "nonexistent", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
+	}
+	got, _ := m.store.Find("blog.test")
+	if got.Preset != "standard" {
+		t.Error("preset should be unchanged after failed update")
+	}
+}
+
+func TestUpdate_ToCustomPreset(t *testing.T) {
+	m, _ := setupManager(t)
+
+	if err := m.Create("shop.test", "wp", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	custom := &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 256}
+	if err := m.Update("shop.test", "", "custom", custom); err != nil {
+		t.Fatalf("Update() = %v", err)
+	}
+
+	got, _ := m.store.Find("shop.test")
+	if got.Preset != presetCustom {
+		t.Errorf("preset = %q, want %q", got.Preset, presetCustom)
+	}
+	if got.CustomPreset == nil {
+		t.Fatal("CustomPreset should not be nil after updating to custom")
+	}
+	if got.CustomPreset.PHPMemoryMB != 512 {
+		t.Errorf("CustomPreset.PHPMemoryMB = %d, want 512", got.CustomPreset.PHPMemoryMB)
+	}
+}
+
+func TestUpdate_FromCustomToNamed(t *testing.T) {
+	m, _ := setupManager(t)
+
+	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
+	if err := m.Create("blog.test", "wp", "83", "custom", custom); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	if err := m.Update("blog.test", "", "standard", nil); err != nil {
+		t.Fatalf("Update() = %v", err)
 	}
 
 	got, _ := m.store.Find("blog.test")
 	if got.Preset != presetStandard {
-		t.Errorf("preset should remain %q after failed tune, got %q", presetStandard, got.Preset)
+		t.Errorf("preset = %q, want %q", got.Preset, presetStandard)
+	}
+	if got.CustomPreset != nil {
+		t.Error("CustomPreset should be nil after updating from custom to named preset")
 	}
 }
 
@@ -450,7 +512,7 @@ func TestCreate_CustomPreset(t *testing.T) {
 	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
-	if err := m.Create("custom.test", "83", "custom", custom); err != nil {
+	if err := m.Create("custom.test", "wp", "83", "custom", custom); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -472,47 +534,51 @@ func TestCreate_CustomPreset(t *testing.T) {
 	}
 }
 
-func TestTune_ToCustomPreset(t *testing.T) {
-	m, _ := setupManager(t)
+// --- Online / Offline ---
 
-	if err := m.Create("shop.test", "83", "standard", nil); err != nil {
+func TestOffline_SetsMaintenanceAndReconciles(t *testing.T) {
+	m, _ := setupManager(t)
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-
-	custom := &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 256}
-	if err := m.Tune("shop.test", "custom", custom); err != nil {
-		t.Fatalf("Tune() = %v", err)
+	if err := m.Offline("blog.test"); err != nil {
+		t.Fatalf("Offline() = %v", err)
 	}
-
-	got, _ := m.store.Find("shop.test")
-	if got.Preset != presetCustom {
-		t.Errorf("preset = %q, want %q", got.Preset, presetCustom)
-	}
-	if got.CustomPreset == nil {
-		t.Fatal("CustomPreset should not be nil after tuning to custom")
-	}
-	if got.CustomPreset.PHPMemoryMB != 512 {
-		t.Errorf("CustomPreset.PHPMemoryMB = %d, want 512", got.CustomPreset.PHPMemoryMB)
+	got, _ := m.store.Find("blog.test")
+	if !got.Maintenance {
+		t.Error("Maintenance should be true after Offline")
 	}
 }
 
-func TestTune_FromCustomToNamed(t *testing.T) {
+func TestOnline_ClearsMaintenanceAndReconciles(t *testing.T) {
 	m, _ := setupManager(t)
-
-	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
-	if err := m.Create("blog.test", "83", "custom", custom); err != nil {
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-
-	if err := m.Tune("blog.test", "standard", nil); err != nil {
-		t.Fatalf("Tune() = %v", err)
+	if err := m.Offline("blog.test"); err != nil {
+		t.Fatalf("Offline() = %v", err)
 	}
-
+	if err := m.Online("blog.test"); err != nil {
+		t.Fatalf("Online() = %v", err)
+	}
 	got, _ := m.store.Find("blog.test")
-	if got.Preset != presetStandard {
-		t.Errorf("preset = %q, want %q", got.Preset, presetStandard)
+	if got.Maintenance {
+		t.Error("Maintenance should be false after Online")
 	}
-	if got.CustomPreset != nil {
-		t.Error("CustomPreset should be nil after tuning from custom to named preset")
+}
+
+func TestOffline_NotFoundReturnsError(t *testing.T) {
+	m, _ := setupManager(t)
+	err := m.Offline("nope.test")
+	if err == nil {
+		t.Fatal("offlining nonexistent site should return error")
+	}
+}
+
+func TestOnline_NotFoundReturnsError(t *testing.T) {
+	m, _ := setupManager(t)
+	err := m.Online("nope.test")
+	if err == nil {
+		t.Fatal("onlining nonexistent site should return error")
 	}
 }

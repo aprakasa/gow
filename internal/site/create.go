@@ -15,7 +15,13 @@ import (
 // server. It validates the preset before touching state so a bad request is
 // rejected early. When preset is "custom", custom must be non-nil with both
 // PHPMemoryMB and WorkerBudgetMB > 0.
-func (m *Manager) Create(name, phpVersion, preset string, custom *state.CustomPreset) error {
+func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *state.CustomPreset) error {
+	switch siteType {
+	case "html", "php", "wp":
+	default:
+		return fmt.Errorf("site: create %s: invalid type %q (html, php, wp)", name, siteType)
+	}
+
 	if preset == "custom" {
 		if custom == nil || custom.PHPMemoryMB == 0 || custom.WorkerBudgetMB == 0 {
 			return fmt.Errorf("site: create %s: custom preset requires php_memory_mb and worker_budget_mb > 0", name)
@@ -28,6 +34,7 @@ func (m *Manager) Create(name, phpVersion, preset string, custom *state.CustomPr
 
 	site := state.Site{
 		Name:         name,
+		Type:         siteType,
 		PHPVersion:   phpVersion,
 		Preset:       preset,
 		CustomPreset: custom,

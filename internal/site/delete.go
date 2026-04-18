@@ -2,6 +2,7 @@ package site
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/aprakasa/gow/internal/ols"
@@ -23,6 +24,11 @@ func (m *Manager) Delete(name string) error {
 
 	if err := m.Reconcile(); err != nil {
 		return fmt.Errorf("site: delete %s: reconcile: %w", name, err)
+	}
+
+	siteRoot := filepath.Join(m.webRoot, name)
+	if err := os.RemoveAll(siteRoot); err != nil {
+		return fmt.Errorf("site: delete %s: remove %s: %w", name, siteRoot, err)
 	}
 
 	return m.store.Save()

@@ -306,7 +306,7 @@ func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
-	return m.Create(domain, sf.php, sf.preset, custom)
+	return m.Create(domain, "wp", sf.php, sf.preset, custom)
 }
 
 func runDelete(cfg cliConfig, domain string) error {
@@ -366,7 +366,7 @@ func runTuneWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
 	if err != nil {
 		return err
 	}
-	return m.Tune(domain, sf.preset, custom)
+	return m.Update(domain, "", sf.preset, custom)
 }
 
 func runStatus(cfg cliConfig, w io.Writer) error {
