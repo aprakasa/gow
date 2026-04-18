@@ -81,6 +81,11 @@ func RenderVHost(siteType string, data VHostData) (string, error) {
 	return defaultRenderer.render(tmplName, data)
 }
 
+// RenderIndexPHP renders a PHP info page for PHP sites.
+func RenderIndexPHP(domain string) (string, error) {
+	return defaultRenderer.render("index-php.php.tmpl", struct{ Domain string }{Domain: domain})
+}
+
 // RenderIndexHTML renders a placeholder index page for HTML sites.
 func RenderIndexHTML(domain string) (string, error) {
 	return defaultRenderer.render("index-html.html.tmpl", struct{ Domain string }{Domain: domain})

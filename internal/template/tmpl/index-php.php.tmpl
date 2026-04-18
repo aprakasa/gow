@@ -1,0 +1,51 @@
+<?php
+$domain = '{{.Domain}}';
+$server = $_SERVER['SERVER_SOFTWARE'] ?? 'Unknown';
+$phpVer = phpversion();
+$docRoot = getcwd();
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?php echo $domain; ?></title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;background:#0f172a;color:#e2e8f0}
+  main{flex:1;display:flex;align-items:center;justify-content:center;padding:2rem}
+  .card{max-width:520px;width:100%;text-align:center}
+  .logo{width:56px;height:56px;margin:0 auto 1.5rem;background:#1e293b;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#38bdf8;border:1px solid #334155}
+  h1{font-size:1.5rem;font-weight:600;letter-spacing:-.02em;margin-bottom:.375rem}
+  .domain{color:#38bdf8;font-weight:600}
+  .subtitle{color:#94a3b8;font-size:.9rem;margin-bottom:2rem}
+  .status{display:inline-flex;align-items:center;gap:.5rem;background:#0c4a6e;border:1px solid #0e7490;border-radius:999px;padding:.5rem 1.25rem;font-size:.85rem;font-weight:500;color:#67e8f9;margin-bottom:2rem}
+  .status::before{content:"";width:8px;height:8px;background:#22d3ee;border-radius:50%;box-shadow:0 0 6px #22d3ee;animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .details{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:1.25rem 1.5rem;text-align:left;margin-bottom:2rem;font-size:.85rem;line-height:1.8}
+  .details .row{display:flex;justify-content:space-between;padding:.125rem 0}
+  .details .label{color:#94a3b8}
+  .details .value{color:#e2e8f0;font-weight:500}
+  .footer{font-size:.8rem;color:#64748b;padding:1.5rem;text-align:center}
+  .footer a{color:#38bdf8;text-decoration:none}
+  .footer a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<main>
+<div class="card">
+  <div class="logo">G</div>
+  <h1>Welcome to <span class="domain"><?php echo $domain; ?></span></h1>
+  <p class="subtitle">Your site is up and running.</p>
+  <div class="status">Online</div>
+  <div class="details">
+    <div class="row"><span class="label">Domain</span><span class="value"><?php echo $domain; ?></span></div>
+    <div class="row"><span class="label">Type</span><span class="value">PHP</span></div>
+    <div class="row"><span class="label">PHP</span><span class="value"><?php echo $phpVer; ?></span></div>
+    <div class="row"><span class="label">Server</span><span class="value"><?php echo $server; ?></span></div>
+  </div>
+  <p class="footer">Managed with <a href="https://github.com/aprakasa/gow">gow</a></p>
+</div>
+</main>
+</body>
+</html>
