@@ -69,6 +69,7 @@ type siteFlags struct {
 	workerBudget uint   // --worker-budget
 	verbose      bool   // --verbose (info only)
 	noPrompt     bool   // --no-prompt (delete only)
+	isolate      bool   // --isolate (update only)
 }
 
 type stackFlags struct {
@@ -133,6 +134,7 @@ func main() {
 	updateCmd.Flags().StringVar(&sUpdateFlags.preset, "tune", "", "Tuning template (blog, woocommerce, custom)")
 	updateCmd.Flags().UintVar(&sUpdateFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (custom only)")
 	updateCmd.Flags().UintVar(&sUpdateFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (custom only)")
+	updateCmd.Flags().BoolVar(&sUpdateFlags.isolate, "isolate", false, "Isolate site with dedicated system user")
 
 	var sInfoFlags siteFlags
 	infoCmd := &cobra.Command{
@@ -447,7 +449,7 @@ func runUpdateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
-	if err := m.Update(domain, sf.php, preset, custom, false); err != nil {
+	if err := m.Update(domain, sf.php, preset, custom, sf.isolate); err != nil {
 		return err
 	}
 	fmt.Printf("Site %s updated.\n", domain)
@@ -490,6 +492,9 @@ func runInfoWithDeps(cfg cliConfig, sf siteFlags, domain string, w io.Writer, d 
 	fmt.Fprintf(w, "PHP:      %s\n", php)
 	fmt.Fprintf(w, "Preset:   %s\n", preset)
 	fmt.Fprintf(w, "Status:   %s\n", status)
+	if s.UnixUser != "" {
+		fmt.Fprintf(w, "User:     %s\n", s.UnixUser)
+	}
 	fmt.Fprintf(w, "Created:  %s\n", s.CreatedAt.Format("2006-01-02 15:04:05"))
 
 	if !sf.verbose {
