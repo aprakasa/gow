@@ -1,0 +1,18 @@
+docRoot                   {{.WebRoot}}/htdocs
+vhDomain                  {{.Domain}}
+enableGzip                1
+
+index  {
+  useServer               0
+  indexFiles              index.html, index.htm
+}
+
+errorlog {{.LogDir}}/{{.Site}}.error.log {
+  useServer               0
+  logLevel                WARN
+}
+
+accesslog {{.LogDir}}/{{.Site}}.access.log {
+  useServer               0
+  logFormat               "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\""
+}

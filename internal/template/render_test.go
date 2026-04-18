@@ -118,7 +118,7 @@ func fixtureVHost() VHostData {
 }
 
 func TestRenderVHostContainsDocRoot(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -128,7 +128,7 @@ func TestRenderVHostContainsDocRoot(t *testing.T) {
 }
 
 func TestRenderVHostContainsDomain(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestRenderVHostContainsDomain(t *testing.T) {
 }
 
 func TestRenderVHostContainsScriptHandler(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -148,7 +148,7 @@ func TestRenderVHostContainsScriptHandler(t *testing.T) {
 }
 
 func TestRenderVHostContainsExtProcessor(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -161,7 +161,7 @@ func TestRenderVHostContainsExtProcessor(t *testing.T) {
 }
 
 func TestRenderVHostContainsSecurityContexts(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -174,7 +174,7 @@ func TestRenderVHostContainsSecurityContexts(t *testing.T) {
 }
 
 func TestRenderVHostContainsCacheRoot(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -184,7 +184,7 @@ func TestRenderVHostContainsCacheRoot(t *testing.T) {
 }
 
 func TestRenderVHostContainsLogs(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -197,7 +197,7 @@ func TestRenderVHostContainsLogs(t *testing.T) {
 }
 
 func TestRenderVHostContainsRewriteRules(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRenderVHostContainsRewriteRules(t *testing.T) {
 }
 
 func TestRenderVHostContainsPHPPath(t *testing.T) {
-	got, err := RenderVHost(fixtureVHost())
+	got, err := RenderVHost("wp", fixtureVHost())
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -228,7 +228,7 @@ func TestRenderVHostUsesAllocatorValues(t *testing.T) {
 		MemSoftMB:        3276,
 		MemHardMB:        4096,
 	}
-	got, err := RenderVHost(data)
+	got, err := RenderVHost("wp", data)
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
@@ -278,5 +278,67 @@ func BenchmarkRenderExtApp(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// --- VHost variant tests ---
+
+func TestRenderVHostHTML(t *testing.T) {
+	data := VHostData{
+		Site:    "static.test",
+		Domain:  "static.test",
+		WebRoot: "/var/www/static.test",
+		LogDir:  "/var/log/lsws",
+	}
+	got, err := RenderVHost("html", data)
+	if err != nil {
+		t.Fatalf("RenderVHost(html) error = %v", err)
+	}
+	if strings.Contains(got, "scripthandler") {
+		t.Error("html template should not contain scripthandler")
+	}
+	if strings.Contains(got, "extprocessor") {
+		t.Error("html template should not contain extprocessor")
+	}
+	if !strings.Contains(got, "docRoot                   /var/www/static.test/htdocs") {
+		t.Error("html template should contain docRoot")
+	}
+}
+
+func TestRenderVHostPHP(t *testing.T) {
+	data := VHostData{
+		Site:             "app.test",
+		Domain:           "app.test",
+		WebRoot:          "/var/www/app.test",
+		LogDir:           "/var/log/lsws",
+		PHPVer:           "83",
+		Children:         4,
+		PHPMemoryLimitMB: 256,
+		MemSoftMB:        512,
+		MemHardMB:        640,
+	}
+	got, err := RenderVHost("php", data)
+	if err != nil {
+		t.Fatalf("RenderVHost(php) error = %v", err)
+	}
+	if !strings.Contains(got, "scripthandler") {
+		t.Error("php template should contain scripthandler")
+	}
+	if strings.Contains(got, "RewriteRule") {
+		t.Error("php template should not contain WordPress rewrite rules")
+	}
+}
+
+func TestRenderVHostWP(t *testing.T) {
+	data := fixtureVHost()
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost(wp) error = %v", err)
+	}
+	if !strings.Contains(got, "RewriteRule . /index.php [L]") {
+		t.Error("wp template should contain WordPress rewrite rules")
+	}
+	if !strings.Contains(got, "context /wp-config.php") {
+		t.Error("wp template should block wp-config.php")
 	}
 }

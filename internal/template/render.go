@@ -75,6 +75,8 @@ func RenderExtApp(data ExtAppData) (string, error) {
 }
 
 // RenderVHost renders the full virtual host configuration for a site.
-func RenderVHost(data VHostData) (string, error) {
-	return defaultRenderer.render("vhost.conf.tmpl", data)
+// siteType selects the template variant: "wp", "php", or "html".
+func RenderVHost(siteType string, data VHostData) (string, error) {
+	tmplName := "vhost-" + siteType + ".conf.tmpl"
+	return defaultRenderer.render(tmplName, data)
 }

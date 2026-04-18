@@ -88,7 +88,7 @@ func (m *Manager) Reconcile() error {
 			MemHardMB:        a.MemHardMB,
 		}
 
-		content, err := template.RenderVHost(data)
+		content, err := template.RenderVHost(siteType(s), data)
 		if err != nil {
 			return fmt.Errorf("site: render vhost %s: %w", a.Site, err)
 		}
@@ -113,4 +113,13 @@ func (m *Manager) Reconcile() error {
 		return fmt.Errorf("site: reconcile reload: %w", err)
 	}
 	return nil
+}
+
+// siteType returns the template variant name for a site. Sites created before
+// the Type field was added default to "wp" for backward compatibility.
+func siteType(s state.Site) string {
+	if s.Type == "" {
+		return "wp"
+	}
+	return s.Type
 }
