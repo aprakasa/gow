@@ -20,6 +20,7 @@ type Site struct {
 	Preset       string        `json:"preset"`
 	CustomPreset *CustomPreset `json:"preset_custom,omitempty"`
 	Maintenance  bool          `json:"maintenance"`
+	UnixUser     string        `json:"unix_user,omitempty"`
 	CreatedAt    time.Time     `json:"created_at"`
 }
 
