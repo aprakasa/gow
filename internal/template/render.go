@@ -80,3 +80,8 @@ func RenderVHost(siteType string, data VHostData) (string, error) {
 	tmplName := "vhost-" + siteType + ".conf.tmpl"
 	return defaultRenderer.render(tmplName, data)
 }
+
+// RenderMaintenance renders a static 503 maintenance page for a domain.
+func RenderMaintenance(domain string) (string, error) {
+	return defaultRenderer.render("maintenance.html.tmpl", struct{ Domain string }{Domain: domain})
+}

@@ -329,6 +329,22 @@ func TestRenderVHostPHP(t *testing.T) {
 	}
 }
 
+func TestRenderMaintenance(t *testing.T) {
+	got, err := RenderMaintenance("example.com")
+	if err != nil {
+		t.Fatalf("RenderMaintenance() error = %v", err)
+	}
+	if !strings.Contains(got, "Under Maintenance") {
+		t.Error("maintenance page should contain heading")
+	}
+	if !strings.Contains(got, "example.com") {
+		t.Error("maintenance page should contain domain")
+	}
+	if !strings.Contains(got, "<!DOCTYPE html>") {
+		t.Error("maintenance page should be valid HTML")
+	}
+}
+
 func TestRenderVHostWP(t *testing.T) {
 	data := fixtureVHost()
 	got, err := RenderVHost("wp", data)
