@@ -46,13 +46,19 @@ func (m *Manager) Update(name, phpVersion, preset string, custom *state.CustomPr
 		s, _ := m.store.Find(name)
 		if err := m.runner.Run("useradd", "--system", "--no-create-home",
 			"--shell", "/usr/sbin/nologin", s.UnixUser); err != nil {
+			// Roll back the UnixUser we just set in the store.
+			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: create user: %w", name, err)
 		}
 		siteRoot := filepath.Join(m.webRoot, name)
 		if err := m.runner.Run("chown", "-R", s.UnixUser+":"+s.UnixUser, siteRoot); err != nil {
+			_ = m.runner.Run("userdel", s.UnixUser)
+			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: chown: %w", name, err)
 		}
 		if err := m.runner.Run("usermod", "-aG", "redis", s.UnixUser); err != nil {
+			_ = m.runner.Run("userdel", s.UnixUser)
+			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: add to redis group: %w", name, err)
 		}
 

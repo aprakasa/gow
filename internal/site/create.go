@@ -61,10 +61,12 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 	}
 	siteRoot := filepath.Join(m.webRoot, name)
 	if err := m.runner.Run("chown", "-R", site.UnixUser+":"+site.UnixUser, siteRoot); err != nil {
+		_ = m.runner.Run("userdel", site.UnixUser)
 		_ = m.store.Remove(name)
 		return fmt.Errorf("site: create %s: chown: %w", name, err)
 	}
 	if err := m.runner.Run("usermod", "-aG", "redis", site.UnixUser); err != nil {
+		_ = m.runner.Run("userdel", site.UnixUser)
 		_ = m.store.Remove(name)
 		return fmt.Errorf("site: create %s: add to redis group: %w", name, err)
 	}
@@ -96,7 +98,8 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 	}
 
 	if err := m.Reconcile(); err != nil {
-		// Best-effort rollback: remove the site we just added.
+		// Best-effort rollback: remove the site and user we just created.
+		_ = m.runner.Run("userdel", site.UnixUser)
 		_ = m.store.Remove(name)
 		return fmt.Errorf("site: create %s: reconcile: %w", name, err)
 	}
