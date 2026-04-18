@@ -67,6 +67,9 @@ func newTestEnv(t *testing.T) *testEnv {
 			phpAvailable: func(ver string) bool {
 				return ver == "81" || ver == "83"
 			},
+			wpInstall: func(string, string) error {
+				return nil
+			},
 		},
 		cfg: cliConfig{
 			confDir:    confDir,

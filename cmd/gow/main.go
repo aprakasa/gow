@@ -3,8 +3,10 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sort"
@@ -335,6 +337,7 @@ type deps struct {
 	newOLS        func() ols.Controller
 	installedPHP  func() []string
 	phpAvailable  func(string) bool
+	wpInstall     func(domain, webRoot string) error
 }
 
 var defaultDeps = deps{
@@ -344,6 +347,7 @@ var defaultDeps = deps{
 	newOLS:        func() ols.Controller { return ols.NewController(ols.DefaultBinPath) },
 	installedPHP:  detectInstalledPHP,
 	phpAvailable:  phpVersionInstalled,
+	wpInstall:     installWordPress,
 }
 
 func newManagerWithDeps(cfg cliConfig, d deps) (*site.Manager, error) {
@@ -402,7 +406,15 @@ func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
-	return m.Create(domain, sf.siteType, phpVer, preset, custom)
+	if err := m.Create(domain, sf.siteType, phpVer, preset, custom); err != nil {
+		return err
+	}
+	if sf.siteType == "wp" {
+		if err := d.wpInstall(domain, cfg.webRoot); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runUpdate(cfg cliConfig, sf siteFlags, domain string) error {
@@ -903,6 +915,94 @@ func moveOLSBeforeLSPHP(cs []stack.Component) []stack.Component {
 		}
 	}
 	return cs
+}
+
+const passwordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func generatePassword(length int) string {
+	chars := make([]byte, length)
+	for i := range chars {
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(passwordChars))))
+		chars[i] = passwordChars[n.Int64()]
+	}
+	return string(chars)
+}
+
+func dbNameFromDomain(domain string) string {
+	return "wp_" + strings.ReplaceAll(domain, ".", "_")
+}
+
+func promptDefault(label, def string) string {
+	fmt.Printf("  %s [%s]: ", label, def)
+	var input string
+	fmt.Scanln(&input)
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return def
+	}
+	return input
+}
+
+func installWordPress(domain, webRoot string) error {
+	docRoot := filepath.Join(webRoot, domain, "htdocs")
+	r := stack.NewShellRunner()
+
+	// Prompt for WP admin credentials.
+	fmt.Println("\n  WordPress setup:")
+	adminUser := promptDefault("Admin username", "admin")
+	adminEmail := promptDefault("Admin email", "admin@"+domain)
+	adminPass := promptDefault("Admin password", "auto-generated")
+	if adminPass == "auto-generated" {
+		adminPass = generatePassword(16)
+	}
+
+	// Download WordPress.
+	fmt.Print("  Downloading WordPress...")
+	if err := r.Run(stack.WPCLIBinPath, "core", "download", "--path="+docRoot, "--allow-root"); err != nil {
+		return fmt.Errorf("wp core download: %w", err)
+	}
+	fmt.Println(" OK")
+
+	// Create database and dedicated user.
+	dbName := dbNameFromDomain(domain)
+	dbUser := dbName
+	dbPass := generatePassword(20)
+
+	fmt.Print("  Creating database...")
+	sql := fmt.Sprintf(
+		"CREATE DATABASE IF NOT EXISTS `%s`; CREATE USER IF NOT EXISTS `%s`@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON `%s`.* TO `%s`@'localhost'; FLUSH PRIVILEGES;",
+		dbName, dbUser, dbPass, dbName, dbUser,
+	)
+	if err := r.Run("mariadb", "-e", sql); err != nil {
+		return fmt.Errorf("create database: %w", err)
+	}
+	fmt.Println(" OK")
+
+	// Generate wp-config.php.
+	if err := r.Run(stack.WPCLIBinPath, "config", "create",
+		"--dbname="+dbName, "--dbuser="+dbUser, "--dbpass="+dbPass,
+		"--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("wp config create: %w", err)
+	}
+
+	// Install WordPress.
+	fmt.Print("  Installing WordPress...")
+	if err := r.Run(stack.WPCLIBinPath, "core", "install",
+		"--url="+domain, "--title="+domain,
+		"--admin_user="+adminUser, "--admin_password="+adminPass,
+		"--admin_email="+adminEmail,
+		"--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("wp core install: %w", err)
+	}
+	fmt.Println(" OK")
+
+	fmt.Printf("\n  URL:      http://%s\n", domain)
+	fmt.Printf("  Username: %s\n", adminUser)
+	fmt.Printf("  Password: %s\n", adminPass)
+
+	return nil
 }
 
 func capitalize(s string) string {
