@@ -160,19 +160,31 @@ func Registry(phpVersions []string) []Component {
 	return components
 }
 
-// Lookup returns components matching the given names. If names is empty,
-// returns all components.
+// Lookup returns components matching the given names plus any LSPHP versions.
+// If names is empty and phpVersions is non-empty, returns only LSPHP components.
+// If both are empty, returns the full registry (no PHP versions).
 func Lookup(names []string, phpVersions []string) []Component {
+	if len(names) == 0 && len(phpVersions) > 0 {
+		var out []Component
+		for _, v := range phpVersions {
+			out = append(out, LSPHP(v))
+		}
+		return out
+	}
 	if len(names) == 0 {
-		return Registry(phpVersions)
+		return Registry(nil)
 	}
 	want := make(map[string]bool, len(names))
 	for _, n := range names {
 		want[n] = true
 	}
+	lsphpWant := make(map[string]bool, len(phpVersions))
+	for _, v := range phpVersions {
+		lsphpWant["lsphp"+v] = true
+	}
 	var out []Component
 	for _, c := range Registry(phpVersions) {
-		if want[c.Name] {
+		if want[c.Name] || lsphpWant[c.Name] {
 			out = append(out, c)
 		}
 	}

@@ -287,15 +287,25 @@ func TestRegistry_MultiplePHPVersions(t *testing.T) {
 	}
 }
 
-func TestLookup_AllWhenEmpty(t *testing.T) {
-	components := Lookup(nil, []string{"81"})
-	if len(components) != 6 {
-		t.Errorf("Lookup(nil) returned %d components, want 6", len(components))
+func TestLookup_FullRegistryWhenBothEmpty(t *testing.T) {
+	components := Lookup(nil, nil)
+	if len(components) != 5 {
+		t.Errorf("Lookup(nil, nil) returned %d components, want 5", len(components))
+	}
+}
+
+func TestLookup_PHPOnly(t *testing.T) {
+	components := Lookup(nil, []string{"84"})
+	if len(components) != 1 {
+		t.Fatalf("Lookup(nil, [84]) returned %d components, want 1", len(components))
+	}
+	if components[0].Name != "lsphp84" {
+		t.Errorf("component = %q, want %q", components[0].Name, "lsphp84")
 	}
 }
 
 func TestLookup_Specific(t *testing.T) {
-	components := Lookup([]string{"ols", "redis"}, []string{"81"})
+	components := Lookup([]string{"ols", "redis"}, nil)
 	if len(components) != 2 {
 		t.Fatalf("Lookup returned %d components, want 2", len(components))
 	}
@@ -307,15 +317,31 @@ func TestLookup_Specific(t *testing.T) {
 	}
 }
 
+func TestLookup_SpecificWithPHP(t *testing.T) {
+	components := Lookup([]string{"ols", "redis"}, []string{"84"})
+	if len(components) != 3 {
+		t.Fatalf("Lookup returned %d components, want 3", len(components))
+	}
+	if components[0].Name != "ols" {
+		t.Errorf("first = %q, want ols", components[0].Name)
+	}
+	if components[1].Name != "lsphp84" {
+		t.Errorf("second = %q, want lsphp84", components[1].Name)
+	}
+	if components[2].Name != "redis" {
+		t.Errorf("third = %q, want redis", components[2].Name)
+	}
+}
+
 func TestLookup_EmptyForUnknown(t *testing.T) {
-	components := Lookup([]string{"nginx"}, []string{"81"})
+	components := Lookup([]string{"nginx"}, nil)
 	if len(components) != 0 {
 		t.Errorf("Lookup(unknown) returned %d components, want 0", len(components))
 	}
 }
 
 func TestLookup_LSPHPByVersion(t *testing.T) {
-	components := Lookup([]string{"lsphp83", "lsphp84"}, []string{"81", "83", "84"})
+	components := Lookup([]string{"lsphp83", "lsphp84"}, []string{"83", "84"})
 	if len(components) != 2 {
 		t.Fatalf("Lookup returned %d components, want 2", len(components))
 	}
