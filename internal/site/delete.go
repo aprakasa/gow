@@ -12,6 +12,9 @@ import (
 // httpd_config.conf, and runs Reconcile to update the OLS configuration. It
 // returns an error if the site does not exist.
 func (m *Manager) Delete(name string) error {
+	// Save UnixUser before removing from store.
+	site, _ := m.store.Find(name)
+
 	if err := m.store.Remove(name); err != nil {
 		return fmt.Errorf("site: delete %s: %w", name, err)
 	}
@@ -24,6 +27,11 @@ func (m *Manager) Delete(name string) error {
 
 	if err := m.Reconcile(); err != nil {
 		return fmt.Errorf("site: delete %s: reconcile: %w", name, err)
+	}
+
+	// Remove the dedicated system user.
+	if site.UnixUser != "" {
+		_ = m.runner.Run("userdel", site.UnixUser)
 	}
 
 	siteRoot := filepath.Join(m.webRoot, name)
