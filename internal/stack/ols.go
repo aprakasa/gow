@@ -61,7 +61,14 @@ func OLS() Component {
 			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
-			return r.Run("dpkg-query", "-W", "-f", "${Status}", "openlitespeed")
+			out, err := r.Output("dpkg-query", "-W", "-f", "${Status}", "openlitespeed")
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(out, "install ok installed") {
+				return fmt.Errorf("openlitespeed not installed: %s", strings.TrimSpace(out))
+			}
+			return nil
 		},
 		StatusFn: func(r Runner) (string, error) {
 			out, err := r.Output("dpkg-query", "-W", "-f", "${Version}", "openlitespeed")

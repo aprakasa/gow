@@ -297,7 +297,7 @@ func (l *loggingRunner) Output(name string, args ...string) (string, error) {
 		return "mariadb from 11.4", nil
 	}
 	if strings.Contains(name, "dpkg-query") {
-		return "1.7.0", nil
+		return "install ok installed", nil
 	}
 	return "", nil
 }

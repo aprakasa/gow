@@ -11,7 +11,7 @@ func MariaDB() Component {
 		Name: "mariadb",
 		InstallFn: func(r Runner) error {
 			if err := r.Run("sh", "-c",
-				"curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash -s -- --mariadb-server-version=mariadb-11.4"); err != nil {
+				"curl -sSL https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash -s -- --mariadb-server-version=mariadb-11.4"); err != nil {
 				return fmt.Errorf("add repo: %w", err)
 			}
 			if err := r.Run("apt-get", "install", "-y",
@@ -70,7 +70,14 @@ func MariaDB() Component {
 			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
-			return r.Run("dpkg-query", "-W", "-f", "${Status}", "mariadb-server")
+			out, err := r.Output("dpkg-query", "-W", "-f", "${Status}", "mariadb-server")
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(out, "install ok installed") {
+				return fmt.Errorf("mariadb-server not installed: %s", strings.TrimSpace(out))
+			}
+			return nil
 		},
 		StatusFn: func(r Runner) (string, error) {
 			out, err := r.Output("mariadb", "--version")
@@ -111,14 +118,16 @@ func MariaDB() Component {
 				return fmt.Errorf("purge old version: %w", err)
 			}
 			_ = r.Run("rm", "-rf", "/var/lib/mysql", "/var/log/mysql", "/etc/mysql")
+			_ = r.Run("mkdir", "-p", "/etc/mysql/conf.d", "/etc/mysql/mariadb.conf.d")
 			if err := r.Run("sh", "-c",
-				"curl -sS https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash -s -- --mariadb-server-version=mariadb-"+targetVer); err != nil {
+				"curl -sSL https://downloads.mariadb.com/MariaDB/mariadb_repo_setup | bash -s -- --mariadb-server-version=mariadb-"+targetVer); err != nil {
 				return fmt.Errorf("add repo %s: %w", targetVer, err)
 			}
 			if err := r.Run("apt-get", "install", "-y",
 				"mariadb-server", "mariadb-client", "mariadb-common"); err != nil {
 				return fmt.Errorf("install %s: %w", targetVer, err)
 			}
+			_ = r.Run("mysql_install_db", "--user=mysql", "--datadir=/var/lib/mysql")
 			if err := r.Run("systemctl", "start", "mariadb"); err != nil {
 				return fmt.Errorf("start service: %w", err)
 			}

@@ -52,7 +52,7 @@ func Redis() Component {
 			if err := r.Run("systemctl", "stop", "redis-server"); err != nil {
 				return fmt.Errorf("stop service: %w", err)
 			}
-			if err := r.Run("apt-get", "purge", "-y", "redis"); err != nil {
+			if err := r.Run("apt-get", "purge", "-y", "redis-server", "redis-tools"); err != nil {
 				return fmt.Errorf("purge package: %w", err)
 			}
 			if err := r.Run("rm", "-rf", "/var/lib/redis"); err != nil {
@@ -73,7 +73,14 @@ func Redis() Component {
 			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
-			return r.Run("dpkg-query", "-W", "-f", "${Status}", "redis-server")
+			out, err := r.Output("dpkg-query", "-W", "-f", "${Status}", "redis-server")
+			if err != nil {
+				return err
+			}
+			if !strings.Contains(out, "install ok installed") {
+				return fmt.Errorf("redis-server not installed: %s", strings.TrimSpace(out))
+			}
+			return nil
 		},
 		StatusFn: func(r Runner) (string, error) {
 			out, err := r.Output("redis-server", "--version")

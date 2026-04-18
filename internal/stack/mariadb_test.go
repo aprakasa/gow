@@ -271,6 +271,8 @@ func TestMariaDB_Migrate(t *testing.T) {
 		"stop":    false,
 		"debconf": false,
 		"purge":   false,
+		"mkdir":   false,
+		"initdb":  false,
 		"install": false,
 		"start":   false,
 		"import":  false,
@@ -288,6 +290,12 @@ func TestMariaDB_Migrate(t *testing.T) {
 		}
 		if c.name == "apt-get" && containsAny(c.args, "purge") {
 			checks["purge"] = true
+		}
+		if c.name == "mkdir" && containsAny(c.args, "/etc/mysql/conf.d") {
+			checks["mkdir"] = true
+		}
+		if c.name == "mysql_install_db" {
+			checks["initdb"] = true
 		}
 		if c.name == "apt-get" && containsAny(c.args, "install") {
 			checks["install"] = true
