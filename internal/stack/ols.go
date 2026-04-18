@@ -19,6 +19,12 @@ func OLS() Component {
 			if err := r.Run("apt-get", "install", "-y", "openlitespeed"); err != nil {
 				return fmt.Errorf("install package: %w", err)
 			}
+			// Set listener to port 80 (default is 8088).
+			if err := r.Run("sed", "-i",
+				"s/\\*:8088/*:80/",
+				"/usr/local/lsws/conf/httpd_config.conf"); err != nil {
+				return fmt.Errorf("set port 80: %w", err)
+			}
 			if err := r.Run(olsCtrlPath, "start"); err != nil {
 				return fmt.Errorf("start: %w", err)
 			}
