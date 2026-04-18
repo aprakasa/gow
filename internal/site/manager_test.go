@@ -582,3 +582,109 @@ func TestOnline_NotFoundReturnsError(t *testing.T) {
 		t.Fatal("onlining nonexistent site should return error")
 	}
 }
+
+// --- HTML site reconciliation ---
+
+func TestReconcile_HTMLSiteNoPHP(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	if err := store.Add(state.Site{
+		Name:      "static.test",
+		Type:      "html",
+		Preset:    "standard",
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("Add site: %v", err)
+	}
+
+	m := setupReconcileTest(t, store)
+	if err := m.Reconcile(); err != nil {
+		t.Fatalf("Reconcile() = %v", err)
+	}
+
+	vhostPath := filepath.Join(m.confDir, "vhosts", "static.test", "vhconf.conf")
+	data, err := os.ReadFile(vhostPath) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("vhost config not found: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "extprocessor") {
+		t.Error("html vhost should not contain extprocessor block")
+	}
+	if strings.Contains(content, "scripthandler") {
+		t.Error("html vhost should not contain scripthandler")
+	}
+}
+
+// --- Maintenance mode ---
+
+func TestReconcile_MaintenanceMode(t *testing.T) {
+	dir := t.TempDir()
+	store, err := state.Open(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatalf("Open store: %v", err)
+	}
+	if err := store.Add(state.Site{
+		Name:        "blog.test",
+		Type:        "wp",
+		PHPVersion:  "83",
+		Preset:      "standard",
+		Maintenance: true,
+		CreatedAt:   time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("Add site: %v", err)
+	}
+
+	m := setupReconcileTest(t, store)
+	if err := m.Reconcile(); err != nil {
+		t.Fatalf("Reconcile() = %v", err)
+	}
+
+	// Check vhost uses html template (no PHP).
+	vhostPath := filepath.Join(m.confDir, "vhosts", "blog.test", "vhconf.conf")
+	data, err := os.ReadFile(vhostPath) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("vhost config not found: %v", err)
+	}
+	content := string(data)
+	if strings.Contains(content, "scripthandler") {
+		t.Error("maintenance vhost should not contain scripthandler")
+	}
+
+	// Check maintenance page written to docRoot.
+	maintPath := filepath.Join(m.webRoot, "blog.test", "htdocs", "index.html")
+	maintData, err := os.ReadFile(maintPath) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("maintenance page not found: %v", err)
+	}
+	if !strings.Contains(string(maintData), "Under Maintenance") {
+		t.Error("maintenance page should contain 'Under Maintenance'")
+	}
+}
+
+// --- Create by type ---
+
+func TestCreate_HTMLSite(t *testing.T) {
+	m, _ := setupManager(t)
+	if err := m.Create("static.test", "html", "", "standard", nil); err != nil {
+		t.Fatalf("Create(html) = %v", err)
+	}
+	got, _ := m.store.Find("static.test")
+	if got.Type != "html" {
+		t.Errorf("Type = %q, want %q", got.Type, "html")
+	}
+}
+
+func TestCreate_PHPSite(t *testing.T) {
+	m, _ := setupManager(t)
+	if err := m.Create("app.test", "php", "83", "standard", nil); err != nil {
+		t.Fatalf("Create(php) = %v", err)
+	}
+	got, _ := m.store.Find("app.test")
+	if got.Type != "php" {
+		t.Errorf("Type = %q, want %q", got.Type, "php")
+	}
+}
