@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -72,7 +73,7 @@ type siteFlags struct {
 
 type stackFlags struct {
 	ols      bool
-	php      bool
+	php      string // --php (version string, e.g. "83", "84")
 	php81    bool
 	php82    bool
 	php83    bool
@@ -428,11 +429,23 @@ func runUpdateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
+	if sf.php != "" {
+		if !d.phpAvailable(sf.php) {
+			return fmt.Errorf("PHP %s is not available; install it first with: sudo gow stack install --php%s", sf.php, sf.php)
+		}
+		if !slices.Contains(d.installedPHP(), sf.php) {
+			return fmt.Errorf("PHP %s is not installed; install it first with: sudo gow stack install --php%s", sf.php, sf.php)
+		}
+	}
 	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
 	}
-	return m.Update(domain, sf.php, preset, custom)
+	if err := m.Update(domain, sf.php, preset, custom); err != nil {
+		return err
+	}
+	fmt.Printf("Site %s updated.\n", domain)
+	return nil
 }
 
 func runInfo(cfg cliConfig, sf siteFlags, domain string, w io.Writer) error {
@@ -520,7 +533,11 @@ func runOnlineWithDeps(cfg cliConfig, domain string, d deps) error {
 	if err != nil {
 		return err
 	}
-	return m.Online(domain)
+	if err := m.Online(domain); err != nil {
+		return err
+	}
+	fmt.Printf("Site %s is now online.\n", domain)
+	return nil
 }
 
 func runOffline(cfg cliConfig, domain string) error {
@@ -532,7 +549,11 @@ func runOfflineWithDeps(cfg cliConfig, domain string, d deps) error {
 	if err != nil {
 		return err
 	}
-	return m.Offline(domain)
+	if err := m.Offline(domain); err != nil {
+		return err
+	}
+	fmt.Printf("Site %s is now offline (maintenance mode).\n", domain)
+	return nil
 }
 
 func runDelete(cfg cliConfig, sf siteFlags, domain string) error {
@@ -730,8 +751,21 @@ var (
 	}
 )
 
+func stackFlagsEmpty(sf stackFlags) bool {
+	return !sf.ols && !sf.mariadb && !sf.redis && !sf.wpcli && !sf.composer &&
+		sf.php == "" && !sf.php81 && !sf.php82 && !sf.php83 && !sf.php84 && !sf.php85
+}
+
 func runStackOp(sf stackFlags, op stackOp) error {
 	names, phpVersions := resolveStackFlags(sf)
+	// For non-install operations with default flags, detect all installed
+	// PHP versions instead of only the default (83). Install keeps the
+	// default since its purpose is to set up a known-good stack.
+	if stackFlagsEmpty(sf) && op.name != "install" {
+		if detected := detectInstalledPHP(); len(detected) > 0 {
+			phpVersions = detected
+		}
+	}
 	components := stack.Lookup(names, phpVersions)
 	r := stack.NewShellRunner()
 
@@ -776,6 +810,12 @@ func runStackOp(sf stackFlags, op stackOp) error {
 		if err := op.fn(c, r); err != nil {
 			return err
 		}
+		if op.name == "upgrade" && c.StatusFn != nil {
+			if detail, err := c.Status(r); err == nil && detail != "" {
+				fmt.Printf("  %s: %s\n", c.Name, detail)
+				continue
+			}
+		}
 		fmt.Printf("  %s: OK\n", c.Name)
 	}
 	return nil
@@ -808,7 +848,7 @@ func runStackMigrate(sf stackFlags) error {
 }
 
 func runStackStatus(w io.Writer) error {
-	components := stack.Registry([]string{"83"})
+	components := stack.Registry(detectInstalledPHP())
 	r := stack.NewShellRunner()
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -835,7 +875,7 @@ func runStackStatus(w io.Writer) error {
 
 func addStackFlags(cmd *cobra.Command, sf *stackFlags) {
 	cmd.Flags().BoolVar(&sf.ols, "ols", false, "OpenLiteSpeed")
-	cmd.Flags().BoolVar(&sf.php, "php", false, "Default PHP (8.3)")
+	cmd.Flags().StringVar(&sf.php, "php", "", "PHP version (e.g. 83, 84)")
 	cmd.Flags().BoolVar(&sf.php81, "php81", false, "LSPHP 8.1")
 	cmd.Flags().BoolVar(&sf.php82, "php82", false, "LSPHP 8.2")
 	cmd.Flags().BoolVar(&sf.php83, "php83", false, "LSPHP 8.3")
@@ -874,8 +914,8 @@ func resolveStackFlags(sf stackFlags) ([]string, []string) {
 			phpVersions = append(phpVersions, v)
 		}
 	}
-	if sf.php {
-		addVer("83")
+	if sf.php != "" {
+		addVer(sf.php)
 	}
 	if sf.php81 {
 		addVer("81")

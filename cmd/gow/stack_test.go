@@ -61,7 +61,7 @@ func TestResolveStackFlags_PHPCombinable(t *testing.T) {
 }
 
 func TestResolveStackFlags_PHPDedup(t *testing.T) {
-	sf := stackFlags{php: true, php83: true}
+	sf := stackFlags{php: "83", php83: true}
 	_, phpVersions := resolveStackFlags(sf)
 	if len(phpVersions) != 1 {
 		t.Errorf("phpVersions = %v, want single [83]", phpVersions)
@@ -69,7 +69,7 @@ func TestResolveStackFlags_PHPDedup(t *testing.T) {
 }
 
 func TestResolveStackFlags_PHPDefaultFlag(t *testing.T) {
-	sf := stackFlags{php: true}
+	sf := stackFlags{php: "83"}
 	_, phpVersions := resolveStackFlags(sf)
 	if len(phpVersions) != 1 || phpVersions[0] != "83" {
 		t.Errorf("phpVersions = %v, want [83]", phpVersions)
