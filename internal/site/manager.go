@@ -10,6 +10,7 @@ import (
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
+	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
 	"github.com/aprakasa/gow/internal/template"
@@ -25,12 +26,13 @@ type Manager struct {
 	policy  allocator.Policy
 	confDir string
 	webRoot string
+	runner  stack.Runner
 }
 
 // NewManager creates a Manager with the given dependencies. confDir is the
 // base directory for rendered OLS configs (e.g., /usr/local/lsws/conf).
 // webRoot is the base directory for site document roots (e.g., /var/www).
-func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, policy allocator.Policy, confDir, webRoot string) *Manager {
+func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, policy allocator.Policy, confDir, webRoot string, runner stack.Runner) *Manager {
 	return &Manager{
 		store:   store,
 		ols:     ctrl,
@@ -38,6 +40,7 @@ func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, pol
 		policy:  policy,
 		confDir: confDir,
 		webRoot: webRoot,
+		runner:  runner,
 	}
 }
 
@@ -193,4 +196,9 @@ func siteType(s state.Site) string {
 		return "wp"
 	}
 	return s.Type
+}
+
+// SiteUserName returns the system user name for a site domain.
+func SiteUserName(domain string) string {
+	return "site-" + domain
 }

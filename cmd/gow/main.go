@@ -370,7 +370,7 @@ func newManagerWithDeps(cfg cliConfig, d deps) (*site.Manager, error) {
 	}
 
 	ctrl := d.newOLS()
-	return site.NewManager(store, ctrl, specs, policy, cfg.confDir, cfg.webRoot), nil
+	return site.NewManager(store, ctrl, specs, policy, cfg.confDir, cfg.webRoot, &stack.ShellRunner{}), nil
 }
 
 func runCreate(cfg cliConfig, sf siteFlags, domain string) error {

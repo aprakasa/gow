@@ -10,6 +10,7 @@ import (
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
+	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
 	"github.com/aprakasa/gow/internal/testmock"
@@ -57,7 +58,7 @@ func setupManager(t *testing.T) (*Manager, string) {
 		t.Fatalf("mkdir www: %v", err)
 	}
 
-	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot), dir
+	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &stack.ShellRunner{}), dir
 }
 
 func fixtureSite(name, preset string) state.Site {
@@ -97,7 +98,7 @@ func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
 	}
 	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot)
+	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &stack.ShellRunner{})
 }
 
 // --- Reconcile ---
@@ -204,7 +205,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 	ctrl := ols.NewController(testmock.WriteArgMock(t, mockDir))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
 
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot)
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &stack.ShellRunner{})
 
 	if err := m.Reconcile(); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
