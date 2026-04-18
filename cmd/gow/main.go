@@ -447,7 +447,7 @@ func runUpdateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
-	if err := m.Update(domain, sf.php, preset, custom); err != nil {
+	if err := m.Update(domain, sf.php, preset, custom, false); err != nil {
 		return err
 	}
 	fmt.Printf("Site %s updated.\n", domain)

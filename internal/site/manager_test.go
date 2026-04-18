@@ -415,7 +415,7 @@ func TestUpdate_ChangesPHPVersion(t *testing.T) {
 	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Update("blog.test", "82", "", nil); err != nil {
+	if err := m.Update("blog.test", "82", "", nil, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
@@ -429,7 +429,7 @@ func TestUpdate_ChangesPreset(t *testing.T) {
 	if err := m.Create("shop.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Update("shop.test", "", "woocommerce", nil); err != nil {
+	if err := m.Update("shop.test", "", "woocommerce", nil, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 	got, _ := m.store.Find("shop.test")
@@ -440,7 +440,7 @@ func TestUpdate_ChangesPreset(t *testing.T) {
 
 func TestUpdate_NotFoundReturnsError(t *testing.T) {
 	m, _ := setupManager(t)
-	err := m.Update("nope.test", "83", "standard", nil)
+	err := m.Update("nope.test", "83", "standard", nil, false)
 	if err == nil {
 		t.Fatal("updating nonexistent site should return error")
 	}
@@ -451,7 +451,7 @@ func TestUpdate_InvalidPresetReturnsError(t *testing.T) {
 	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	err := m.Update("blog.test", "", "nonexistent", nil)
+	err := m.Update("blog.test", "", "nonexistent", nil, false)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -469,7 +469,7 @@ func TestUpdate_ToCustomPreset(t *testing.T) {
 	}
 
 	custom := &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 256}
-	if err := m.Update("shop.test", "", "custom", custom); err != nil {
+	if err := m.Update("shop.test", "", "custom", custom, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 
@@ -493,7 +493,7 @@ func TestUpdate_FromCustomToNamed(t *testing.T) {
 		t.Fatalf("Create() = %v", err)
 	}
 
-	if err := m.Update("blog.test", "", "standard", nil); err != nil {
+	if err := m.Update("blog.test", "", "standard", nil, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 
@@ -697,5 +697,36 @@ func TestCreate_SetsUnixUser(t *testing.T) {
 	got, _ := m.store.Find("blog.test")
 	if got.UnixUser != "site-blog.test" {
 		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog.test")
+	}
+}
+
+func TestUpdate_IsolateCreatesUser(t *testing.T) {
+	m, dir := setupManager(t)
+
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+
+	// Simulate pre-isolation state: no UnixUser, restrained 0.
+	m.store.Update("blog.test", func(s *state.Site) {
+		s.UnixUser = ""
+	})
+	httpdConfPath := filepath.Join(dir, "conf", "httpd_config.conf")
+	data, _ := os.ReadFile(httpdConfPath)
+	os.WriteFile(httpdConfPath, []byte(strings.ReplaceAll(string(data),
+		"restrained               1", "restrained               0")), 0o644)
+
+	if err := m.Update("blog.test", "", "", nil, true); err != nil {
+		t.Fatalf("Update(isolate) = %v", err)
+	}
+
+	got, _ := m.store.Find("blog.test")
+	if got.UnixUser != "site-blog.test" {
+		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog.test")
+	}
+
+	content := httpdContent(t, dir)
+	if !strings.Contains(content, "restrained               1") {
+		t.Error("httpd config should have restrained 1 after isolate")
 	}
 }
