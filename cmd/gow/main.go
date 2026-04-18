@@ -1082,6 +1082,56 @@ func installWordPress(domain, webRoot string) error {
 	}
 	fmt.Println(" OK")
 
+	// Install and activate LiteSpeed Cache.
+	fmt.Print("  Installing LiteSpeed Cache...")
+	if err := r.Run(stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",
+		"--activate", "--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("install lscache: %w", err)
+	}
+	fmt.Println(" OK")
+
+	// Configure LSCache object cache (Redis via Unix socket).
+	fmt.Print("  Configuring object cache...")
+	phpEval := `$conf = get_option('litespeed-cache-conf', array());
+if (!is_array($conf)) $conf = array();
+$conf['object'] = true;
+$conf['object-kind'] = true;
+$conf['object-host'] = '/var/run/redis/redis.sock';
+$conf['object-port'] = 0;
+$conf['object-life'] = 360;
+$conf['object-persistent'] = true;
+$conf['object-admin'] = true;
+$conf['object-db_id'] = 0;
+update_option('litespeed-cache-conf', $conf);
+// Write .litespeed_conf.dat so the object-cache.php drop-in can read
+// settings before plugins are loaded (early bootstrap).
+$dat = array(
+    'object' => true,
+    'object-kind' => true,
+    'object-host' => '/var/run/redis/redis.sock',
+    'object-port' => 0,
+    'object-life' => 360,
+    'object-persistent' => true,
+    'object-admin' => true,
+    'object-db_id' => 0,
+);
+file_put_contents(WP_CONTENT_DIR . '/.litespeed_conf.dat', wp_json_encode($dat));
+`
+	if err := r.Run(stack.WPCLIBinPath, "eval", phpEval,
+		"--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("configure object cache: %w", err)
+	}
+	// Copy object-cache.php drop-in (LSCache may not auto-create via CLI).
+	if err := r.Run("cp", "-n",
+		docRoot+"/wp-content/plugins/litespeed-cache/lib/object-cache.php",
+		docRoot+"/wp-content/object-cache.php",
+	); err != nil {
+		return fmt.Errorf("copy object-cache drop-in: %w", err)
+	}
+	fmt.Println(" OK")
+
 	fmt.Printf("\n  URL:      http://%s\n", domain)
 	fmt.Printf("  Username: %s\n", adminUser)
 	fmt.Printf("  Password: %s\n", adminPass)
