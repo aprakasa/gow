@@ -61,6 +61,12 @@ func newTestEnv(t *testing.T) *testEnv {
 			newOLS: func() ols.Controller {
 				return &stubController{}
 			},
+			installedPHP: func() []string {
+				return []string{"81", "83"}
+			},
+			phpAvailable: func(ver string) bool {
+				return ver == "81" || ver == "83"
+			},
 		},
 		cfg: cliConfig{
 			confDir:    confDir,
@@ -101,6 +107,57 @@ func TestRunCreateWithDeps_InvalidPreset(t *testing.T) {
 	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "nonexistent", php: "83"}, "blog.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for invalid preset")
+	}
+}
+
+func TestRunCreateWithDeps_PHPNotInstalled(t *testing.T) {
+	e := newTestEnv(t)
+	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "84"}, "blog.test", e.deps)
+	if err == nil {
+		t.Fatal("expected error for uninstalled PHP version")
+	}
+	if !strings.Contains(err.Error(), "not installed") {
+		t.Errorf("error = %q, want 'not installed'", err.Error())
+	}
+}
+
+func TestRunCreateWithDeps_NoPHPInstalled(t *testing.T) {
+	e := newTestEnv(t)
+	e.deps.installedPHP = func() []string { return nil }
+	e.deps.phpAvailable = func(string) bool { return false }
+	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog"}, "blog.test", e.deps)
+	if err == nil {
+		t.Fatal("expected error when no PHP installed")
+	}
+	if !strings.Contains(err.Error(), "no LSPHP versions found") {
+		t.Errorf("error = %q, want 'no LSPHP versions found'", err.Error())
+	}
+}
+
+func TestRunCreateWithDeps_AutoDetectPHP(t *testing.T) {
+	e := newTestEnv(t)
+	// No --php flag: should auto-detect latest (83).
+	if err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog"}, "blog.test", e.deps); err != nil {
+		t.Fatalf("runCreateWithDeps() = %v", err)
+	}
+	store, _ := e.deps.openStore(e.cfg.stateFile)
+	got, _ := store.Find("blog.test")
+	if got.PHPVersion != "83" {
+		t.Errorf("PHP = %q, want %q", got.PHPVersion, "83")
+	}
+}
+
+func TestRunCreateWithDeps_HTMLSkipsPHP(t *testing.T) {
+	e := newTestEnv(t)
+	e.deps.installedPHP = func() []string { return nil }
+	e.deps.phpAvailable = func(string) bool { return false }
+	if err := runCreateWithDeps(e.cfg, siteFlags{siteType: "html"}, "static.test", e.deps); err != nil {
+		t.Fatalf("runCreateWithDeps() = %v", err)
+	}
+	store, _ := e.deps.openStore(e.cfg.stateFile)
+	got, _ := store.Find("static.test")
+	if got.PHPVersion != "" {
+		t.Errorf("PHP = %q, want empty for HTML site", got.PHPVersion)
 	}
 }
 

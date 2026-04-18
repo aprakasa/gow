@@ -65,6 +65,19 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 		}
 	}
 
+	// Write a PHP info page for PHP sites.
+	if siteType == "php" {
+		idx, err := template.RenderIndexPHP(name)
+		if err != nil {
+			return fmt.Errorf("site: create %s: render index: %w", name, err)
+		}
+		indexPath := filepath.Join(docRoot, "index.php")
+		if err := os.WriteFile(indexPath, []byte(idx), 0o644); err != nil { //nolint:gosec // generated PHP, not secret
+			_ = m.store.Remove(name)
+			return fmt.Errorf("site: create %s: write index: %w", name, err)
+		}
+	}
+
 	if err := m.Reconcile(); err != nil {
 		// Best-effort rollback: remove the site we just added.
 		_ = m.store.Remove(name)

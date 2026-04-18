@@ -10,8 +10,8 @@ func TestResolveStackFlags_DefaultWhenEmpty(t *testing.T) {
 	if len(names) != 0 {
 		t.Errorf("names = %v, want empty", names)
 	}
-	if len(phpVersions) != 1 || phpVersions[0] != "81" {
-		t.Errorf("phpVersions = %v, want [81]", phpVersions)
+	if len(phpVersions) != 1 || phpVersions[0] != "83" {
+		t.Errorf("phpVersions = %v, want [83]", phpVersions)
 	}
 }
 
@@ -55,18 +55,18 @@ func TestResolveStackFlags_PHPCombinable(t *testing.T) {
 }
 
 func TestResolveStackFlags_PHPDedup(t *testing.T) {
-	sf := stackFlags{php: true, php81: true}
+	sf := stackFlags{php: true, php83: true}
 	_, phpVersions := resolveStackFlags(sf)
 	if len(phpVersions) != 1 {
-		t.Errorf("phpVersions = %v, want single [81]", phpVersions)
+		t.Errorf("phpVersions = %v, want single [83]", phpVersions)
 	}
 }
 
 func TestResolveStackFlags_PHPDefaultFlag(t *testing.T) {
 	sf := stackFlags{php: true}
 	_, phpVersions := resolveStackFlags(sf)
-	if len(phpVersions) != 1 || phpVersions[0] != "81" {
-		t.Errorf("phpVersions = %v, want [81]", phpVersions)
+	if len(phpVersions) != 1 || phpVersions[0] != "83" {
+		t.Errorf("phpVersions = %v, want [83]", phpVersions)
 	}
 }
 

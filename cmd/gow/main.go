@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -17,6 +20,36 @@ import (
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
 )
+
+// detectInstalledPHP scans the OLS lsphp directory for installed LSPHP
+// versions. Returns sorted version strings (e.g., ["81", "83", "84"]).
+func detectInstalledPHP() []string {
+	olsPHPDir := "/usr/local/lsws"
+	entries, err := os.ReadDir(olsPHPDir)
+	if err != nil {
+		return nil
+	}
+	var versions []string
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "lsphp") {
+			continue
+		}
+		ver := strings.TrimPrefix(e.Name(), "lsphp")
+		bin := filepath.Join(olsPHPDir, e.Name(), "bin", "lsphp")
+		if _, err := os.Stat(bin); err == nil {
+			versions = append(versions, ver)
+		}
+	}
+	sort.Strings(versions)
+	return versions
+}
+
+// phpVersionInstalled checks whether a specific LSPHP version is installed.
+func phpVersionInstalled(ver string) bool {
+	bin := "/usr/local/lsws/lsphp" + ver + "/bin/lsphp"
+	_, err := os.Stat(bin)
+	return err == nil
+}
 
 type cliConfig struct {
 	confDir    string
@@ -79,7 +112,7 @@ func main() {
 		},
 	}
 	createCmd.Flags().StringVar(&sCreateFlags.siteType, "type", "wp", "Site type (html, php, wp)")
-	createCmd.Flags().StringVar(&sCreateFlags.php, "php", "83", "PHP major version")
+	createCmd.Flags().StringVar(&sCreateFlags.php, "php", "", "PHP major version (default: latest installed)")
 	createCmd.Flags().StringVar(&sCreateFlags.preset, "tune", "blog", "Tuning template (blog, woocommerce, custom)")
 	createCmd.Flags().UintVar(&sCreateFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (custom only)")
 	createCmd.Flags().UintVar(&sCreateFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (custom only)")
@@ -296,17 +329,21 @@ func main() {
 // deps groups the side-effecting operations that cmd/gow depends on.
 // Production code uses defaultDeps; tests inject mocks via this struct.
 type deps struct {
-	detectSpecs func() (system.Specs, error)
-	loadPolicy  func(string) (allocator.Policy, error)
-	openStore   func(string) (*state.Store, error)
-	newOLS      func() ols.Controller
+	detectSpecs   func() (system.Specs, error)
+	loadPolicy    func(string) (allocator.Policy, error)
+	openStore     func(string) (*state.Store, error)
+	newOLS        func() ols.Controller
+	installedPHP  func() []string
+	phpAvailable  func(string) bool
 }
 
 var defaultDeps = deps{
-	detectSpecs: system.Detect,
-	loadPolicy:  allocator.LoadPolicyFromFile,
-	openStore:   state.Open,
-	newOLS:      func() ols.Controller { return ols.NewController(ols.DefaultBinPath) },
+	detectSpecs:   system.Detect,
+	loadPolicy:    allocator.LoadPolicyFromFile,
+	openStore:     state.Open,
+	newOLS:        func() ols.Controller { return ols.NewController(ols.DefaultBinPath) },
+	installedPHP:  detectInstalledPHP,
+	phpAvailable:  phpVersionInstalled,
 }
 
 func newManagerWithDeps(cfg cliConfig, d deps) (*site.Manager, error) {
@@ -338,11 +375,34 @@ func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
+
+	// HTML sites don't need PHP.
+	if sf.siteType == "html" {
+		m, err := newManagerWithDeps(cfg, d)
+		if err != nil {
+			return err
+		}
+		return m.Create(domain, sf.siteType, "", "standard", nil)
+	}
+
+	phpVer := sf.php
+	installed := d.installedPHP()
+
+	if len(installed) == 0 {
+		return fmt.Errorf("no LSPHP versions found. Install one first: sudo gow stack install --php")
+	}
+
+	if phpVer == "" {
+		phpVer = installed[len(installed)-1]
+	} else if !d.phpAvailable(phpVer) {
+		return fmt.Errorf("PHP %s is not installed. Install it first: sudo gow stack install --php%s", phpVer, phpVer)
+	}
+
 	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
 	}
-	return m.Create(domain, sf.siteType, sf.php, preset, custom)
+	return m.Create(domain, sf.siteType, phpVer, preset, custom)
 }
 
 func runUpdate(cfg cliConfig, sf siteFlags, domain string) error {
@@ -649,6 +709,9 @@ func runStackOp(sf stackFlags, op stackOp) error {
 	iter := components
 	if op.reverse {
 		iter = reverseComponents(components)
+		// OLS depends on lsphp, so removing lsphp first kills OLS.
+		// Move OLS before any lsphp in the remove order.
+		iter = moveOLSBeforeLSPHP(iter)
 	}
 
 	for _, c := range iter {
@@ -668,9 +731,14 @@ func runStackOp(sf stackFlags, op stackOp) error {
 			}
 		}
 		if op.validate && !op.reverse {
-			if err := c.Verify(r); err == nil {
-				fmt.Printf("  %s: already installed, skipping\n", c.Name)
-				continue
+			// Don't skip LSPHP — apt-get install is idempotent and
+			// ensures all extension packages are present even if the
+			// base was installed as an OLS dependency.
+			if c.VerifyFn != nil && !strings.HasPrefix(c.Name, "lsphp") {
+				if err := c.Verify(r); err == nil {
+					fmt.Printf("  %s: already installed, skipping\n", c.Name)
+					continue
+				}
 			}
 		}
 		fmt.Printf("%s %s...\n", capitalize(op.name), c.Name)
@@ -692,7 +760,7 @@ func runStackMigrate(sf stackFlags) error {
 	}
 
 	r := stack.NewShellRunner()
-	components := stack.Lookup(names, []string{"81"})
+	components := stack.Lookup(names, []string{"83"})
 
 	for _, c := range components {
 		if c.MigrateFn == nil {
@@ -709,7 +777,7 @@ func runStackMigrate(sf stackFlags) error {
 }
 
 func runStackStatus(w io.Writer) error {
-	components := stack.Registry([]string{"81"})
+	components := stack.Registry([]string{"83"})
 	r := stack.NewShellRunner()
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -736,7 +804,7 @@ func runStackStatus(w io.Writer) error {
 
 func addStackFlags(cmd *cobra.Command, sf *stackFlags) {
 	cmd.Flags().BoolVar(&sf.ols, "ols", false, "OpenLiteSpeed")
-	cmd.Flags().BoolVar(&sf.php, "php", false, "Default PHP (8.1)")
+	cmd.Flags().BoolVar(&sf.php, "php", false, "Default PHP (8.3)")
 	cmd.Flags().BoolVar(&sf.php81, "php81", false, "LSPHP 8.1")
 	cmd.Flags().BoolVar(&sf.php82, "php82", false, "LSPHP 8.2")
 	cmd.Flags().BoolVar(&sf.php83, "php83", false, "LSPHP 8.3")
@@ -776,7 +844,7 @@ func resolveStackFlags(sf stackFlags) ([]string, []string) {
 		}
 	}
 	if sf.php {
-		addVer("81")
+		addVer("83")
 	}
 	if sf.php81 {
 		addVer("81")
@@ -795,9 +863,9 @@ func resolveStackFlags(sf stackFlags) ([]string, []string) {
 	}
 
 	// If any component flag was set but no PHP, no LSPHP.
-	// If no flags at all, default to PHP 81.
+	// If no flags at all, default to PHP 83.
 	if len(names) == 0 && len(phpVersions) == 0 {
-		phpVersions = []string{"81"}
+		phpVersions = []string{"83"}
 	}
 
 	// If component flags set but no PHP, skip LSPHP (user chose specific non-PHP components).
@@ -813,6 +881,27 @@ func reverseComponents(cs []stack.Component) []stack.Component {
 		out[n-1-i] = c
 	}
 	return out
+}
+
+// moveOLSBeforeLSPHP reorders components so OLS comes before any lsphp
+// entries. This prevents apt from removing OLS as a side effect of removing
+// lsphp (OLS depends on lsphp).
+func moveOLSBeforeLSPHP(cs []stack.Component) []stack.Component {
+	var ols []stack.Component
+	var rest []stack.Component
+	for _, c := range cs {
+		if c.Name == "ols" {
+			ols = append(ols, c)
+		} else {
+			rest = append(rest, c)
+		}
+	}
+	for i, c := range rest {
+		if strings.HasPrefix(c.Name, "lsphp") {
+			return append(rest[:i:i], append(ols, rest[i:]...)...)
+		}
+	}
+	return cs
 }
 
 func capitalize(s string) string {
