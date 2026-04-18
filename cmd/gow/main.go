@@ -389,7 +389,11 @@ func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 		if err != nil {
 			return err
 		}
-		return m.Create(domain, sf.siteType, "", "standard", nil)
+		if err := m.Create(domain, sf.siteType, "", "standard", nil); err != nil {
+			return err
+		}
+		fmt.Printf("Site %s created.\n", domain)
+		return nil
 	}
 
 	phpVer := sf.php
@@ -416,6 +420,8 @@ func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 		if err := d.wpInstall(domain, cfg.webRoot); err != nil {
 			return err
 		}
+	} else {
+		fmt.Printf("Site %s created.\n", domain)
 	}
 	return nil
 }
@@ -471,10 +477,18 @@ func runInfoWithDeps(cfg cliConfig, sf siteFlags, domain string, w io.Writer, d 
 		status = "offline"
 	}
 
+	php := s.PHPVersion
+	if php == "" {
+		php = "-"
+	}
+	preset := s.Preset
+	if preset == "" {
+		preset = "-"
+	}
 	fmt.Fprintf(w, "Site:     %s\n", s.Name)
 	fmt.Fprintf(w, "Type:     %s\n", sType)
-	fmt.Fprintf(w, "PHP:      %s\n", s.PHPVersion)
-	fmt.Fprintf(w, "Preset:   %s\n", s.Preset)
+	fmt.Fprintf(w, "PHP:      %s\n", php)
+	fmt.Fprintf(w, "Preset:   %s\n", preset)
 	fmt.Fprintf(w, "Status:   %s\n", status)
 	fmt.Fprintf(w, "Created:  %s\n", s.CreatedAt.Format("2006-01-02 15:04:05"))
 
@@ -603,6 +617,7 @@ func runDeleteWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 			fmt.Printf("  warning: database cleanup failed: %v\n", err)
 		}
 	}
+	fmt.Printf("Site %s deleted.\n", domain)
 	return nil
 }
 
