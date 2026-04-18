@@ -70,6 +70,9 @@ func newTestEnv(t *testing.T) *testEnv {
 			wpInstall: func(string, string) error {
 				return nil
 			},
+			dbCleanup: func(string) error {
+				return nil
+			},
 		},
 		cfg: cliConfig{
 			confDir:    confDir,

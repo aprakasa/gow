@@ -338,6 +338,7 @@ type deps struct {
 	installedPHP  func() []string
 	phpAvailable  func(string) bool
 	wpInstall     func(domain, webRoot string) error
+	dbCleanup     func(domain string) error
 }
 
 var defaultDeps = deps{
@@ -348,6 +349,7 @@ var defaultDeps = deps{
 	installedPHP:  detectInstalledPHP,
 	phpAvailable:  phpVersionInstalled,
 	wpInstall:     installWordPress,
+	dbCleanup:     dropSiteDB,
 }
 
 func newManagerWithDeps(cfg cliConfig, d deps) (*site.Manager, error) {
@@ -563,7 +565,24 @@ func runDeleteWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
-	return m.Delete(domain)
+
+	site, _ := store.Find(domain)
+	sType := site.Type
+	if sType == "" {
+		sType = "wp"
+	}
+
+	if err := m.Delete(domain); err != nil {
+		return err
+	}
+
+	// Clean up database for WP/PHP sites.
+	if sType != "html" {
+		if err := d.dbCleanup(domain); err != nil {
+			fmt.Printf("  warning: database cleanup failed: %v\n", err)
+		}
+	}
+	return nil
 }
 
 func runList(cfg cliConfig, w io.Writer) error {
@@ -915,6 +934,16 @@ func moveOLSBeforeLSPHP(cs []stack.Component) []stack.Component {
 		}
 	}
 	return cs
+}
+
+func dropSiteDB(domain string) error {
+	dbName := dbNameFromDomain(domain)
+	r := stack.NewShellRunner()
+	sql := fmt.Sprintf(
+		"DROP DATABASE IF EXISTS `%s`; DROP USER IF EXISTS `%s`@'localhost'; FLUSH PRIVILEGES;",
+		dbName, dbName,
+	)
+	return r.Run("mariadb", "-e", sql)
 }
 
 const passwordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
