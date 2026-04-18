@@ -26,10 +26,13 @@ type cliConfig struct {
 }
 
 type siteFlags struct {
-	preset       string
-	php          string
-	phpMemory    uint
-	workerBudget uint
+	siteType     string // --type (create only: html, php, wp)
+	php          string // --php (version string)
+	preset       string // --tune (blog, woocommerce, custom)
+	phpMemory    uint   // --php-memory
+	workerBudget uint   // --worker-budget
+	verbose      bool   // --verbose (info only)
+	noPrompt     bool   // --no-prompt (delete only)
 }
 
 type stackFlags struct {
@@ -66,28 +69,45 @@ func main() {
 		Short: "Manage WordPress sites",
 	}
 
-	var createFlags siteFlags
+	var sCreateFlags siteFlags
 	createCmd := &cobra.Command{
 		Use:   "create <domain>",
-		Short: "Create a new WordPress site",
+		Short: "Create a new site",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runCreate(cfg, createFlags, args[0])
+			return runCreate(cfg, sCreateFlags, args[0])
 		},
 	}
-	createCmd.Flags().StringVar(&createFlags.preset, "preset", "standard", "Resource preset (lite/standard/business/woocommerce/heavy/custom)")
-	createCmd.Flags().StringVar(&createFlags.php, "php", "83", "PHP major version")
-	createCmd.Flags().UintVar(&createFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (only with --preset custom)")
-	createCmd.Flags().UintVar(&createFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (only with --preset custom)")
+	createCmd.Flags().StringVar(&sCreateFlags.siteType, "type", "wp", "Site type (html, php, wp)")
+	createCmd.Flags().StringVar(&sCreateFlags.php, "php", "83", "PHP major version")
+	createCmd.Flags().StringVar(&sCreateFlags.preset, "tune", "blog", "Tuning template (blog, woocommerce, custom)")
+	createCmd.Flags().UintVar(&sCreateFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (custom only)")
+	createCmd.Flags().UintVar(&sCreateFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (custom only)")
 
-	deleteCmd := &cobra.Command{
-		Use:   "delete <domain>",
-		Short: "Delete a WordPress site",
+	var sUpdateFlags siteFlags
+	updateCmd := &cobra.Command{
+		Use:   "update <domain>",
+		Short: "Update a site's PHP version or tuning",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runDelete(cfg, args[0])
+			return runUpdate(cfg, sUpdateFlags, args[0])
 		},
 	}
+	updateCmd.Flags().StringVar(&sUpdateFlags.php, "php", "", "PHP major version (empty = no change)")
+	updateCmd.Flags().StringVar(&sUpdateFlags.preset, "tune", "", "Tuning template (blog, woocommerce, custom)")
+	updateCmd.Flags().UintVar(&sUpdateFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (custom only)")
+	updateCmd.Flags().UintVar(&sUpdateFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (custom only)")
+
+	var sInfoFlags siteFlags
+	infoCmd := &cobra.Command{
+		Use:   "info <domain>",
+		Short: "Show site details",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			return runInfo(cfg, sInfoFlags, args[0], c.OutOrStdout())
+		},
+	}
+	infoCmd.Flags().BoolVar(&sInfoFlags.verbose, "verbose", false, "Show allocation details")
 
 	listCmd := &cobra.Command{
 		Use:   "list",
@@ -97,20 +117,36 @@ func main() {
 		},
 	}
 
-	var tuneFlags siteFlags
-	tuneCmd := &cobra.Command{
-		Use:   "tune <domain>",
-		Short: "Change the resource preset for an existing site",
+	onlineCmd := &cobra.Command{
+		Use:   "online <domain>",
+		Short: "Bring a site online (exit maintenance mode)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runTune(cfg, tuneFlags, args[0])
+			return runOnline(cfg, args[0])
 		},
 	}
-	tuneCmd.Flags().StringVar(&tuneFlags.preset, "preset", "", "New resource preset (required)")
-	tuneCmd.Flags().UintVar(&tuneFlags.phpMemory, "php-memory", 0, "PHP memory limit in MB (only with --preset custom)")
-	tuneCmd.Flags().UintVar(&tuneFlags.workerBudget, "worker-budget", 0, "Worker budget in MB (only with --preset custom)")
 
-	siteCmd.AddCommand(createCmd, deleteCmd, listCmd, tuneCmd)
+	offlineCmd := &cobra.Command{
+		Use:   "offline <domain>",
+		Short: "Put a site into maintenance mode (503 page)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return runOffline(cfg, args[0])
+		},
+	}
+
+	var sDeleteFlags siteFlags
+	deleteCmd := &cobra.Command{
+		Use:   "delete <domain>",
+		Short: "Delete a site",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return runDelete(cfg, sDeleteFlags, args[0])
+		},
+	}
+	deleteCmd.Flags().BoolVar(&sDeleteFlags.noPrompt, "no-prompt", false, "Skip confirmation prompt")
+
+	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd)
 
 	// --- Stack commands ---
 
@@ -298,7 +334,7 @@ func runCreate(cfg cliConfig, sf siteFlags, domain string) error {
 }
 
 func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
-	custom, err := resolveCustom(sf.preset, sf.phpMemory, sf.workerBudget)
+	preset, custom, err := resolveTuneFlags(sf)
 	if err != nil {
 		return err
 	}
@@ -306,14 +342,151 @@ func runCreateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 	if err != nil {
 		return err
 	}
-	return m.Create(domain, "wp", sf.php, sf.preset, custom)
+	return m.Create(domain, sf.siteType, sf.php, preset, custom)
 }
 
-func runDelete(cfg cliConfig, domain string) error {
-	return runDeleteWithDeps(cfg, domain, defaultDeps)
+func runUpdate(cfg cliConfig, sf siteFlags, domain string) error {
+	return runUpdateWithDeps(cfg, sf, domain, defaultDeps)
 }
 
-func runDeleteWithDeps(cfg cliConfig, domain string, d deps) error {
+func runUpdateWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
+	preset, custom, err := resolveTuneFlags(sf)
+	if err != nil {
+		return err
+	}
+	m, err := newManagerWithDeps(cfg, d)
+	if err != nil {
+		return err
+	}
+	return m.Update(domain, sf.php, preset, custom)
+}
+
+func runInfo(cfg cliConfig, sf siteFlags, domain string, w io.Writer) error {
+	return runInfoWithDeps(cfg, sf, domain, w, defaultDeps)
+}
+
+func runInfoWithDeps(cfg cliConfig, sf siteFlags, domain string, w io.Writer, d deps) error {
+	store, err := d.openStore(cfg.stateFile)
+	if err != nil {
+		return err
+	}
+	s, ok := store.Find(domain)
+	if !ok {
+		return fmt.Errorf("site %q not found", domain)
+	}
+
+	sType := s.Type
+	if sType == "" {
+		sType = "wp"
+	}
+	status := "online"
+	if s.Maintenance {
+		status = "offline"
+	}
+
+	fmt.Fprintf(w, "Site:     %s\n", s.Name)
+	fmt.Fprintf(w, "Type:     %s\n", sType)
+	fmt.Fprintf(w, "PHP:      %s\n", s.PHPVersion)
+	fmt.Fprintf(w, "Preset:   %s\n", s.Preset)
+	fmt.Fprintf(w, "Status:   %s\n", status)
+	fmt.Fprintf(w, "Created:  %s\n", s.CreatedAt.Format("2006-01-02 15:04:05"))
+
+	if !sf.verbose {
+		return nil
+	}
+
+	specs, err := d.detectSpecs()
+	if err != nil {
+		return fmt.Errorf("detect hardware: %w", err)
+	}
+	policy, err := d.loadPolicy(cfg.policyFile)
+	if err != nil {
+		return fmt.Errorf("load policy: %w", err)
+	}
+
+	sites := store.Sites()
+	inputs := make([]allocator.SiteInput, 0, len(sites))
+	for _, s := range sites {
+		if s.Type == "html" {
+			continue
+		}
+		in := allocator.SiteInput{Name: s.Name, Preset: s.Preset}
+		if s.CustomPreset != nil {
+			in.CustomPHPMemoryMB = s.CustomPreset.PHPMemoryMB
+			in.CustomWorkerBudgetMB = s.CustomPreset.WorkerBudgetMB
+		}
+		inputs = append(inputs, in)
+	}
+	allocs, err := allocator.Compute(specs.TotalRAMMB, specs.CPUCores, inputs, policy)
+	if err != nil {
+		return fmt.Errorf("compute allocations: %w", err)
+	}
+	for _, a := range allocs {
+		if a.Site == domain {
+			fmt.Fprintf(w, "\nAllocation:\n")
+			fmt.Fprintf(w, "  Children:   %d\n", a.Children)
+			fmt.Fprintf(w, "  PHP Memory: %dMB\n", a.PHPMemoryLimitMB)
+			fmt.Fprintf(w, "  Mem Soft:   %dMB\n", a.MemSoftMB)
+			fmt.Fprintf(w, "  Mem Hard:   %dMB\n", a.MemHardMB)
+			if a.Downgraded {
+				fmt.Fprintf(w, "  Note:       (downgraded from requested preset)\n")
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func runOnline(cfg cliConfig, domain string) error {
+	return runOnlineWithDeps(cfg, domain, defaultDeps)
+}
+
+func runOnlineWithDeps(cfg cliConfig, domain string, d deps) error {
+	m, err := newManagerWithDeps(cfg, d)
+	if err != nil {
+		return err
+	}
+	return m.Online(domain)
+}
+
+func runOffline(cfg cliConfig, domain string) error {
+	return runOfflineWithDeps(cfg, domain, defaultDeps)
+}
+
+func runOfflineWithDeps(cfg cliConfig, domain string, d deps) error {
+	m, err := newManagerWithDeps(cfg, d)
+	if err != nil {
+		return err
+	}
+	return m.Offline(domain)
+}
+
+func runDelete(cfg cliConfig, sf siteFlags, domain string) error {
+	return runDeleteWithDeps(cfg, sf, domain, defaultDeps)
+}
+
+func runDeleteWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
+	store, err := d.openStore(cfg.stateFile)
+	if err != nil {
+		return err
+	}
+	if _, ok := store.Find(domain); !ok {
+		return fmt.Errorf("site %q not found", domain)
+	}
+
+	if !sf.noPrompt {
+		fmt.Printf("This will permanently delete:\n")
+		fmt.Printf("  - OLS virtual host configuration\n")
+		fmt.Printf("  - Site state from gow registry\n")
+		fmt.Printf("  - %s/%s/ (including uploads, themes, plugins)\n", cfg.webRoot, domain)
+		fmt.Printf("\nAre you sure? [y/N]: ")
+		var resp string
+		fmt.Scanln(&resp)
+		if resp != "y" && resp != "Y" {
+			return fmt.Errorf("aborted")
+		}
+	}
+
 	m, err := newManagerWithDeps(cfg, d)
 	if err != nil {
 		return err
@@ -348,25 +521,6 @@ func runReconcileWithDeps(cfg cliConfig, d deps) error {
 		return err
 	}
 	return m.Reconcile()
-}
-
-func runTune(cfg cliConfig, sf siteFlags, domain string) error {
-	return runTuneWithDeps(cfg, sf, domain, defaultDeps)
-}
-
-func runTuneWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
-	if sf.preset == "" {
-		return fmt.Errorf("required flag: --preset")
-	}
-	custom, err := resolveCustom(sf.preset, sf.phpMemory, sf.workerBudget)
-	if err != nil {
-		return err
-	}
-	m, err := newManagerWithDeps(cfg, d)
-	if err != nil {
-		return err
-	}
-	return m.Update(domain, "", sf.preset, custom)
 }
 
 func runStatus(cfg cliConfig, w io.Writer) error {
@@ -407,17 +561,28 @@ func runStatusWithDeps(cfg cliConfig, w io.Writer, d deps) error {
 	return formatStatus(w, specs.TotalRAMMB, allocs, policy)
 }
 
-func resolveCustom(preset string, phpMem, workerBudget uint) (*state.CustomPreset, error) {
-	if preset != "custom" {
-		if phpMem != 0 || workerBudget != 0 {
-			return nil, fmt.Errorf("--php-memory and --worker-budget require --preset custom")
+func resolveTuneFlags(sf siteFlags) (string, *state.CustomPreset, error) {
+	tune := sf.preset
+	if tune == "" {
+		return "", nil, nil
+	}
+
+	switch tune {
+	case "blog":
+		return "standard", nil, nil
+	case "woocommerce":
+		return "woocommerce", nil, nil
+	case "custom":
+		if sf.phpMemory == 0 || sf.workerBudget == 0 {
+			return "", nil, fmt.Errorf("--tune custom requires --php-memory and --worker-budget > 0")
 		}
-		return nil, nil
+		return "custom", &state.CustomPreset{
+			PHPMemoryMB:    uint64(sf.phpMemory),
+			WorkerBudgetMB: uint64(sf.workerBudget),
+		}, nil
+	default:
+		return tune, nil, nil
 	}
-	if phpMem == 0 || workerBudget == 0 {
-		return nil, fmt.Errorf("--preset custom requires --php-memory and --worker-budget > 0")
-	}
-	return &state.CustomPreset{PHPMemoryMB: uint64(phpMem), WorkerBudgetMB: uint64(workerBudget)}, nil
 }
 
 // --- Stack operations ---
@@ -663,11 +828,19 @@ func formatSites(w io.Writer, sites []state.Site) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "SITE\tPHP\tPRESET"); err != nil {
+	if _, err := fmt.Fprintln(tw, "SITE\tTYPE\tPHP\tPRESET\tSTATUS"); err != nil {
 		return err
 	}
 	for _, s := range sites {
-		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Name, s.PHPVersion, s.Preset); err != nil {
+		status := "online"
+		if s.Maintenance {
+			status = "offline"
+		}
+		sType := s.Type
+		if sType == "" {
+			sType = "wp"
+		}
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, sType, s.PHPVersion, s.Preset, status); err != nil {
 			return err
 		}
 	}

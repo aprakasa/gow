@@ -83,7 +83,7 @@ listener Default {
 
 func TestRunCreateWithDeps_Success(t *testing.T) {
 	e := newTestEnv(t)
-	if err := runCreateWithDeps(e.cfg, siteFlags{preset: "standard", php: "83"}, "blog.test", e.deps); err != nil {
+	if err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps); err != nil {
 		t.Fatalf("runCreateWithDeps() = %v", err)
 	}
 	store, _ := e.deps.openStore(e.cfg.stateFile)
@@ -98,7 +98,7 @@ func TestRunCreateWithDeps_Success(t *testing.T) {
 
 func TestRunCreateWithDeps_InvalidPreset(t *testing.T) {
 	e := newTestEnv(t)
-	err := runCreateWithDeps(e.cfg, siteFlags{preset: "nonexistent", php: "83"}, "blog.test", e.deps)
+	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "nonexistent", php: "83"}, "blog.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for invalid preset")
 	}
@@ -106,8 +106,8 @@ func TestRunCreateWithDeps_InvalidPreset(t *testing.T) {
 
 func TestRunDeleteWithDeps_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{preset: "standard", php: "83"}, "blog.test", e.deps)
-	if err := runDeleteWithDeps(e.cfg, "blog.test", e.deps); err != nil {
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+	if err := runDeleteWithDeps(e.cfg, siteFlags{noPrompt: true}, "blog.test", e.deps); err != nil {
 		t.Fatalf("runDeleteWithDeps() = %v", err)
 	}
 	store, _ := e.deps.openStore(e.cfg.stateFile)
@@ -118,7 +118,7 @@ func TestRunDeleteWithDeps_Success(t *testing.T) {
 
 func TestRunDeleteWithDeps_NotFound(t *testing.T) {
 	e := newTestEnv(t)
-	err := runDeleteWithDeps(e.cfg, "nope.test", e.deps)
+	err := runDeleteWithDeps(e.cfg, siteFlags{noPrompt: true}, "nope.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for nonexistent site")
 	}
@@ -137,7 +137,7 @@ func TestRunListWithDeps_Empty(t *testing.T) {
 
 func TestRunListWithDeps_ShowsSite(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{preset: "standard", php: "83"}, "blog.test", e.deps)
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
 	var buf bytes.Buffer
 	if err := runListWithDeps(e.cfg, &buf, e.deps); err != nil {
 		t.Fatalf("runListWithDeps() = %v", err)
@@ -147,11 +147,11 @@ func TestRunListWithDeps_ShowsSite(t *testing.T) {
 	}
 }
 
-func TestRunTuneWithDeps_Success(t *testing.T) {
+func TestRunUpdateWithDeps_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{preset: "standard", php: "83"}, "blog.test", e.deps)
-	if err := runTuneWithDeps(e.cfg, siteFlags{preset: "woocommerce"}, "blog.test", e.deps); err != nil {
-		t.Fatalf("runTuneWithDeps() = %v", err)
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+	if err := runUpdateWithDeps(e.cfg, siteFlags{preset: "woocommerce"}, "blog.test", e.deps); err != nil {
+		t.Fatalf("runUpdateWithDeps() = %v", err)
 	}
 	store, _ := e.deps.openStore(e.cfg.stateFile)
 	got, _ := store.Find("blog.test")
@@ -160,20 +160,18 @@ func TestRunTuneWithDeps_Success(t *testing.T) {
 	}
 }
 
-func TestRunTuneWithDeps_NoPreset(t *testing.T) {
+func TestRunUpdateWithDeps_EmptyPreset(t *testing.T) {
 	e := newTestEnv(t)
-	err := runTuneWithDeps(e.cfg, siteFlags{preset: ""}, "blog.test", e.deps)
-	if err == nil {
-		t.Fatal("expected error when --preset is empty")
-	}
-	if !strings.Contains(err.Error(), "required flag") {
-		t.Errorf("error = %q, want 'required flag'", err.Error())
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+	// Empty preset should succeed — it means "no change"
+	if err := runUpdateWithDeps(e.cfg, siteFlags{preset: ""}, "blog.test", e.deps); err != nil {
+		t.Fatalf("runUpdateWithDeps() = %v", err)
 	}
 }
 
 func TestRunReconcileWithDeps_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{preset: "standard", php: "83"}, "blog.test", e.deps)
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
 	if err := runReconcileWithDeps(e.cfg, e.deps); err != nil {
 		t.Fatalf("runReconcileWithDeps() = %v", err)
 	}
@@ -192,7 +190,7 @@ func TestRunStatusWithDeps_Empty(t *testing.T) {
 
 func TestRunStatusWithDeps_ShowAllocation(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{preset: "standard", php: "83"}, "blog.test", e.deps)
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
 	var buf bytes.Buffer
 	if err := runStatusWithDeps(e.cfg, &buf, e.deps); err != nil {
 		t.Fatalf("runStatusWithDeps() = %v", err)

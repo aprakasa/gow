@@ -24,8 +24,8 @@ func TestFormatSites_Empty(t *testing.T) {
 
 func TestFormatSites_ListsAllSites(t *testing.T) {
 	sites := []state.Site{
-		{Name: "blog.test", PHPVersion: "83", Preset: "standard", CreatedAt: time.Now()},
-		{Name: "shop.test", PHPVersion: "83", Preset: "woocommerce", CreatedAt: time.Now()},
+		{Name: "blog.test", Type: "wp", PHPVersion: "83", Preset: "standard", CreatedAt: time.Now()},
+		{Name: "shop.test", Type: "wp", PHPVersion: "83", Preset: "woocommerce", CreatedAt: time.Now()},
 	}
 	var buf bytes.Buffer
 	if err := formatSites(&buf, sites); err != nil {
@@ -38,6 +38,9 @@ func TestFormatSites_ListsAllSites(t *testing.T) {
 	}
 	if !strings.Contains(got, "shop.test") {
 		t.Error("output should contain shop.test")
+	}
+	if !strings.Contains(got, "online") {
+		t.Error("output should contain status column with 'online'")
 	}
 }
 
@@ -154,63 +157,60 @@ func TestFormatStatus_ShowsDowngrade(t *testing.T) {
 	}
 }
 
-func TestResolveCustom(t *testing.T) {
+func TestResolveTuneFlags(t *testing.T) {
 	tests := []struct {
-		name         string
-		preset       string
-		phpMem       uint
-		workerBudget uint
-		wantErr      string
-		wantNil      bool
-		wantCustom   *state.CustomPreset
+		name           string
+		sf             siteFlags
+		wantPreset     string
+		wantCustom     *state.CustomPreset
+		wantErr        string
+		wantNilCustom  bool
 	}{
 		{
-			name:    "non-custom preset returns nil",
-			preset:  "standard",
-			wantNil: true,
+			name:          "empty tune returns empty preset",
+			sf:            siteFlags{preset: ""},
+			wantPreset:    "",
+			wantNilCustom: true,
 		},
 		{
-			name:    "non-custom preset with phpMem",
-			preset:  "standard",
-			phpMem:  256,
-			wantErr: "--php-memory and --worker-budget require --preset custom",
+			name:          "blog maps to standard",
+			sf:            siteFlags{preset: "blog"},
+			wantPreset:    "standard",
+			wantNilCustom: true,
 		},
 		{
-			name:         "non-custom preset with workerBudget",
-			preset:       "standard",
-			workerBudget: 1024,
-			wantErr:      "--php-memory and --worker-budget require --preset custom",
+			name:          "woocommerce maps to woocommerce",
+			sf:            siteFlags{preset: "woocommerce"},
+			wantPreset:    "woocommerce",
+			wantNilCustom: true,
 		},
 		{
-			name:         "non-custom preset with both set",
-			preset:       "standard",
-			phpMem:       256,
-			workerBudget: 1024,
-			wantErr:      "--php-memory and --worker-budget require --preset custom",
+			name:    "custom without memory errors",
+			sf:      siteFlags{preset: "custom"},
+			wantErr: "--tune custom requires --php-memory and --worker-budget > 0",
 		},
 		{
-			name:    "custom preset with zero phpMem",
-			preset:  "custom",
-			wantErr: "--preset custom requires --php-memory and --worker-budget > 0",
+			name:    "custom without worker budget errors",
+			sf:      siteFlags{preset: "custom", phpMemory: 256},
+			wantErr: "--tune custom requires --php-memory and --worker-budget > 0",
 		},
 		{
-			name:    "custom preset with zero workerBudget",
-			preset:  "custom",
-			phpMem:  256,
-			wantErr: "--preset custom requires --php-memory and --worker-budget > 0",
+			name:       "custom with both set returns custom preset",
+			sf:         siteFlags{preset: "custom", phpMemory: 512, workerBudget: 2048},
+			wantPreset: "custom",
+			wantCustom: &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 2048},
 		},
 		{
-			name:         "custom preset with both set",
-			preset:       "custom",
-			phpMem:       512,
-			workerBudget: 2048,
-			wantCustom:   &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 2048},
+			name:          "unknown preset passes through",
+			sf:            siteFlags{preset: "standard"},
+			wantPreset:    "standard",
+			wantNilCustom: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveCustom(tt.preset, tt.phpMem, tt.workerBudget)
+			preset, custom, err := resolveTuneFlags(tt.sf)
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
@@ -223,14 +223,17 @@ func TestResolveCustom(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("expected nil, got %+v", got)
+			if preset != tt.wantPreset {
+				t.Errorf("preset = %q, want %q", preset, tt.wantPreset)
+			}
+			if tt.wantNilCustom {
+				if custom != nil {
+					t.Fatalf("expected nil custom, got %+v", custom)
 				}
 				return
 			}
-			if got.PHPMemoryMB != tt.wantCustom.PHPMemoryMB || got.WorkerBudgetMB != tt.wantCustom.WorkerBudgetMB {
-				t.Fatalf("expected %+v, got %+v", tt.wantCustom, got)
+			if custom.PHPMemoryMB != tt.wantCustom.PHPMemoryMB || custom.WorkerBudgetMB != tt.wantCustom.WorkerBudgetMB {
+				t.Fatalf("expected %+v, got %+v", tt.wantCustom, custom)
 			}
 		})
 	}
