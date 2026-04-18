@@ -26,7 +26,7 @@ type ExtAppData struct {
 	MemHardMB        uint64
 }
 
-// VHostData holds the values injected into the vhost.conf.tmpl template.
+// VHostData holds the values injected into the vhost template variants.
 // The allocator-derived fields (Children, PHPMemoryLimitMB, MemSoftMB,
 // MemHardMB) populate the extprocessor block so each site gets its own
 // resource-isolated LSPHP cluster.
