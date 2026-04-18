@@ -10,7 +10,6 @@ import (
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
-	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
 	"github.com/aprakasa/gow/internal/testmock"
@@ -58,7 +57,7 @@ func setupManager(t *testing.T) (*Manager, string) {
 		t.Fatalf("mkdir www: %v", err)
 	}
 
-	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &stack.ShellRunner{}), dir
+	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{}), dir
 }
 
 func fixtureSite(name, preset string) state.Site {
@@ -98,7 +97,7 @@ func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
 	}
 	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &stack.ShellRunner{})
+	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 }
 
 // --- Reconcile ---
@@ -205,7 +204,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 	ctrl := ols.NewController(testmock.WriteArgMock(t, mockDir))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
 
-	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &stack.ShellRunner{})
+	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 
 	if err := m.Reconcile(); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
@@ -687,5 +686,16 @@ func TestCreate_PHPSite(t *testing.T) {
 	got, _ := m.store.Find("app.test")
 	if got.Type != "php" {
 		t.Errorf("Type = %q, want %q", got.Type, "php")
+	}
+}
+
+func TestCreate_SetsUnixUser(t *testing.T) {
+	m, _ := setupManager(t)
+	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+		t.Fatalf("Create() = %v", err)
+	}
+	got, _ := m.store.Find("blog.test")
+	if got.UnixUser != "site-blog.test" {
+		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog.test")
 	}
 }

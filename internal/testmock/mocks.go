@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+// NoopRunner implements stack.Runner by doing nothing. Use in tests that
+// verify state changes without executing real shell commands.
+type NoopRunner struct{}
+
+// Run discards the command and returns nil.
+func (NoopRunner) Run(string, ...string) error { return nil }
+
+// Output discards the command and returns an empty string.
+func (NoopRunner) Output(string, ...string) (string, error) { return "", nil }
+
 // WriteMock creates a temporary executable shell script that runs body and
 // returns its path.
 func WriteMock(t *testing.T, body string) string {
