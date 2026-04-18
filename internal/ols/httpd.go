@@ -27,7 +27,7 @@ func RegisterVHost(httpdConfPath, siteName, vhRoot, configFile string) error {
 			"    vhRoot                   %s\n"+
 			"    allowSymbolLink          1\n"+
 			"    enableScript             1\n"+
-			"    restrained               0\n"+
+			"    restrained               1\n"+
 			"    setUIDMode               2\n"+
 			"    configFile               %s\n"+
 			"}\n", siteName, vhRoot, configFile)

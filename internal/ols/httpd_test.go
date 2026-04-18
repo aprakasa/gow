@@ -65,6 +65,10 @@ func TestRegisterVHost_AddsVirtualHostAndMap(t *testing.T) {
 	if !strings.Contains(content, "map                      blog.test blog.test") {
 		t.Error("missing listener map entry for blog.test")
 	}
+
+	if !strings.Contains(content, "restrained               1") {
+		t.Error("virtualHost should have restrained 1")
+	}
 }
 
 func TestRegisterVHost_Idempotent(t *testing.T) {
