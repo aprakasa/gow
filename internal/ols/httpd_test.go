@@ -139,6 +139,39 @@ func TestUnregisterVHost_Idempotent(t *testing.T) {
 	}
 }
 
+func TestUpdateVHostRestrained(t *testing.T) {
+	p := writeHttpdConf(t, baseHttpdConf())
+
+	// Register a site.
+	if err := RegisterVHost(p, "blog.test", "/var/www/blog.test", "conf/vhosts/blog.test/vhconf.conf"); err != nil {
+		t.Fatalf("RegisterVHost() = %v", err)
+	}
+
+	// Manually set restrained to 0 to simulate an old site.
+	data, _ := os.ReadFile(p) //nolint:gosec // test
+	content := strings.ReplaceAll(string(data),
+		"restrained               1\n"+
+			"    setUIDMode               2",
+		"restrained               0\n"+
+			"    setUIDMode               2",
+	)
+	os.WriteFile(p, []byte(content), 0o644) //nolint:gosec // test
+
+	// Update it to 1.
+	if err := UpdateVHostRestrained(p, "blog.test", 1); err != nil {
+		t.Fatalf("UpdateVHostRestrained() = %v", err)
+	}
+
+	got, _ := os.ReadFile(p) //nolint:gosec // test
+	s := string(got)
+	if !strings.Contains(s, "restrained               1") {
+		t.Error("expected restrained 1 after update")
+	}
+	if strings.Contains(s, "restrained               0") {
+		t.Error("should not contain restrained 0 after update")
+	}
+}
+
 func TestRegisterVHost_MultipleSites(t *testing.T) {
 	p := writeHttpdConf(t, baseHttpdConf())
 

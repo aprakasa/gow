@@ -151,3 +151,59 @@ func removeBlock(content, headerPrefix string) string {
 
 	return buf.String()
 }
+
+// UpdateVHostRestrained changes the restrained value for a site's virtualHost
+// block in httpd_config.conf.
+func UpdateVHostRestrained(httpdConfPath, siteName string, value int) error {
+	data, err := os.ReadFile(httpdConfPath) //nolint:gosec // config file, not secret
+	if err != nil {
+		return fmt.Errorf("ols: read httpd config: %w", err)
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	var buf bytes.Buffer
+	inBlock := false
+	depth := 0
+	updated := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		if !inBlock && strings.HasPrefix(trimmed, "virtualHost "+siteName+" {") {
+			inBlock = true
+			depth = 1
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+			continue
+		}
+
+		if inBlock {
+			if strings.Contains(trimmed, "{") {
+				depth++
+			}
+			if trimmed == "}" {
+				depth--
+			}
+
+			if !updated && strings.HasPrefix(trimmed, "restrained") {
+				fmt.Fprintf(&buf, "    restrained               %d\n", value)
+				updated = true
+				continue
+			}
+
+			if depth == 0 {
+				inBlock = false
+			}
+		}
+
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+
+	if !updated {
+		return fmt.Errorf("ols: restrained line not found for %s", siteName)
+	}
+
+	return os.WriteFile(httpdConfPath, buf.Bytes(), 0o644) //nolint:gosec // config file
+}
