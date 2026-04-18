@@ -25,7 +25,7 @@ func TestLSPHP_Install_InstallsAllPackages(t *testing.T) {
 	for _, c := range calls {
 		if c.name == "apt-get" && len(c.args) > 0 && c.args[0] == "install" {
 			found = true
-			for _, pkg := range []string{"lsphp84", "lsphp84-common", "lsphp84-mysql", "lsphp84-curl"} {
+			for _, pkg := range []string{"lsphp84", "lsphp84-common", "lsphp84-mysql", "lsphp84-curl", "lsphp84-intl", "lsphp84-imagick", "lsphp84-sqlite3", "lsphp84-opcache"} {
 				if !containsAny(c.args, pkg) {
 					t.Errorf("apt-get install missing package %q, args = %v", pkg, c.args)
 				}

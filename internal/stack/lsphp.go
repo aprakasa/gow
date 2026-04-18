@@ -5,10 +5,12 @@ import (
 	"strings"
 )
 
-// lsphpExtensions lists the PHP extensions required for WordPress.
-// gd, mbstring, xml, zip are compiled into the base/common package.
+// lsphpExtensions lists the PHP extensions required and recommended for
+// WordPress. bcmath, gd, mbstring, xml, zip are compiled into the
+// base/common package and don't need separate installation.
 var lsphpExtensions = []string{
 	"common", "mysql", "curl", "imap", "redis", "opcache",
+	"intl", "imagick", "sqlite3",
 }
 
 // lsphpPackages returns the full package list for a given PHP version.
