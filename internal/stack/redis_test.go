@@ -209,12 +209,12 @@ func TestRedis_Reload(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if c.name == "systemctl" && containsAny(c.args, "reload") {
+		if c.name == "systemctl" && containsAny(c.args, "restart") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected systemctl reload redis-server call")
+		t.Error("expected systemctl restart redis-server call")
 	}
 }
 

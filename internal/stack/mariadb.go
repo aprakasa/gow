@@ -70,7 +70,7 @@ func MariaDB() Component {
 			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
-			return r.Run("systemctl", "is-active", "mariadb")
+			return r.Run("dpkg-query", "-W", "-f", "${Status}", "mariadb-server")
 		},
 		StatusFn: func(r Runner) (string, error) {
 			out, err := r.Output("mariadb", "--version")
@@ -89,7 +89,7 @@ func MariaDB() Component {
 			return r.Run("systemctl", "restart", "mariadb")
 		},
 		ReloadFn: func(r Runner) error {
-			return r.Run("systemctl", "reload", "mariadb")
+			return r.Run("systemctl", "restart", "mariadb")
 		},
 		ActiveFn: func(r Runner) error {
 			return r.Run("systemctl", "is-active", "mariadb")

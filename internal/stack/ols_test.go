@@ -152,12 +152,12 @@ func TestOLS_Start(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if strings.Contains(c.name, "lswsctrl") && containsAny(c.args, "start") {
+		if c.name == "systemctl" && containsAny(c.args, "start") && containsAny(c.args, "lshttpd") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected lswsctrl start call")
+		t.Error("expected systemctl start lshttpd call")
 	}
 }
 
@@ -172,12 +172,12 @@ func TestOLS_Stop(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if strings.Contains(c.name, "lswsctrl") && containsAny(c.args, "stop") {
+		if c.name == "systemctl" && containsAny(c.args, "stop") && containsAny(c.args, "lshttpd") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected lswsctrl stop call")
+		t.Error("expected systemctl stop lshttpd call")
 	}
 }
 
@@ -192,12 +192,12 @@ func TestOLS_Restart(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if strings.Contains(c.name, "lswsctrl") && containsAny(c.args, "restart") {
+		if c.name == "systemctl" && containsAny(c.args, "restart") && containsAny(c.args, "lshttpd") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected lswsctrl restart call")
+		t.Error("expected systemctl restart lshttpd call")
 	}
 }
 
@@ -212,12 +212,12 @@ func TestOLS_Reload(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if strings.Contains(c.name, "lswsctrl") && containsAny(c.args, "reload") {
+		if c.name == "systemctl" && containsAny(c.args, "reload") && containsAny(c.args, "lshttpd") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected lswsctrl reload call")
+		t.Error("expected systemctl reload lshttpd call")
 	}
 }
 

@@ -73,14 +73,7 @@ func Redis() Component {
 			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
-			out, err := r.Output("redis-cli", "ping")
-			if err != nil {
-				return err
-			}
-			if !strings.HasPrefix(out, "PONG") {
-				return fmt.Errorf("redis ping returned %q, want PONG", out)
-			}
-			return nil
+			return r.Run("dpkg-query", "-W", "-f", "${Status}", "redis-server")
 		},
 		StatusFn: func(r Runner) (string, error) {
 			out, err := r.Output("redis-server", "--version")
@@ -99,7 +92,7 @@ func Redis() Component {
 			return r.Run("systemctl", "restart", "redis-server")
 		},
 		ReloadFn: func(r Runner) error {
-			return r.Run("systemctl", "reload", "redis-server")
+			return r.Run("systemctl", "restart", "redis-server")
 		},
 		ActiveFn: func(r Runner) error {
 			out, err := r.Output("redis-cli", "ping")

@@ -117,7 +117,7 @@ func TestMariaDB_Purge_DeepCleans(t *testing.T) {
 	}
 }
 
-func TestMariaDB_Verify_ChecksSystemctlIsActive(t *testing.T) {
+func TestMariaDB_Verify_ChecksPackageInstalled(t *testing.T) {
 	var calls []call
 	mr := &loggingRunner{calls: &calls}
 
@@ -128,12 +128,12 @@ func TestMariaDB_Verify_ChecksSystemctlIsActive(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if c.name == "systemctl" && containsAny(c.args, "is-active") {
+		if c.name == "dpkg-query" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected systemctl is-active verification call")
+		t.Error("expected dpkg-query verification call")
 	}
 }
 
@@ -208,12 +208,12 @@ func TestMariaDB_Reload(t *testing.T) {
 
 	found := false
 	for _, c := range calls {
-		if c.name == "systemctl" && containsAny(c.args, "reload") {
+		if c.name == "systemctl" && containsAny(c.args, "restart") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected systemctl reload mariadb call")
+		t.Error("expected systemctl restart mariadb call")
 	}
 }
 

@@ -61,7 +61,7 @@ func OLS() Component {
 			return r.Run("apt-get", "update", "-y")
 		},
 		VerifyFn: func(r Runner) error {
-			return r.Run(olsCtrlPath, "status")
+			return r.Run("dpkg-query", "-W", "-f", "${Status}", "openlitespeed")
 		},
 		StatusFn: func(r Runner) (string, error) {
 			out, err := r.Output("dpkg-query", "-W", "-f", "${Version}", "openlitespeed")
@@ -71,19 +71,19 @@ func OLS() Component {
 			return "OpenLiteSpeed " + strings.TrimSpace(out), nil
 		},
 		StartFn: func(r Runner) error {
-			return r.Run(olsCtrlPath, "start")
+			return r.Run("systemctl", "start", "lshttpd")
 		},
 		StopFn: func(r Runner) error {
-			return r.Run(olsCtrlPath, "stop")
+			return r.Run("systemctl", "stop", "lshttpd")
 		},
 		RestartFn: func(r Runner) error {
-			return r.Run(olsCtrlPath, "restart")
+			return r.Run("systemctl", "restart", "lshttpd")
 		},
 		ReloadFn: func(r Runner) error {
-			return r.Run(olsCtrlPath, "reload")
+			return r.Run("systemctl", "reload", "lshttpd")
 		},
 		ActiveFn: func(r Runner) error {
-			return r.Run(olsCtrlPath, "status")
+			return r.Run("systemctl", "is-active", "lshttpd")
 		},
 	}
 }
