@@ -863,9 +863,10 @@ func resolveStackFlags(sf stackFlags) ([]string, []string) {
 	}
 
 	// If any component flag was set but no PHP, no LSPHP.
-	// If no flags at all, default to PHP 83.
+	// If no flags at all, default to PHP 83 + core components (no composer).
 	if len(names) == 0 && len(phpVersions) == 0 {
 		phpVersions = []string{"83"}
+		names = []string{"ols", "mariadb", "redis", "wpcli"}
 	}
 
 	// If component flags set but no PHP, skip LSPHP (user chose specific non-PHP components).

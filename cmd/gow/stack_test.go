@@ -7,8 +7,14 @@ import (
 func TestResolveStackFlags_DefaultWhenEmpty(t *testing.T) {
 	sf := stackFlags{}
 	names, phpVersions := resolveStackFlags(sf)
-	if len(names) != 0 {
-		t.Errorf("names = %v, want empty", names)
+	wantNames := []string{"ols", "mariadb", "redis", "wpcli"}
+	if len(names) != len(wantNames) {
+		t.Fatalf("names = %v, want %v", names, wantNames)
+	}
+	for i, n := range wantNames {
+		if names[i] != n {
+			t.Errorf("names[%d] = %q, want %q", i, names[i], n)
+		}
 	}
 	if len(phpVersions) != 1 || phpVersions[0] != "83" {
 		t.Errorf("phpVersions = %v, want [83]", phpVersions)
