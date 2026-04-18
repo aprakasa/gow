@@ -8,6 +8,7 @@ import (
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/state"
+	"github.com/aprakasa/gow/internal/template"
 )
 
 // Create adds a new site to the state store, creates its document root
@@ -49,6 +50,19 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // web root, world-readable is fine
 		_ = m.store.Remove(name)
 		return fmt.Errorf("site: create %s: mkdir %s: %w", name, docRoot, err)
+	}
+
+	// Write a placeholder index page for HTML sites.
+	if siteType == "html" {
+		idx, err := template.RenderIndexHTML(name)
+		if err != nil {
+			return fmt.Errorf("site: create %s: render index: %w", name, err)
+		}
+		indexPath := filepath.Join(docRoot, "index.html")
+		if err := os.WriteFile(indexPath, []byte(idx), 0o644); err != nil { //nolint:gosec // static HTML, not secret
+			_ = m.store.Remove(name)
+			return fmt.Errorf("site: create %s: write index: %w", name, err)
+		}
 	}
 
 	if err := m.Reconcile(); err != nil {

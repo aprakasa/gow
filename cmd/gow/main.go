@@ -840,7 +840,13 @@ func formatSites(w io.Writer, sites []state.Site) error {
 		if sType == "" {
 			sType = "wp"
 		}
-		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, sType, s.PHPVersion, s.Preset, status); err != nil {
+		php := s.PHPVersion
+		preset := s.Preset
+		if sType == "html" {
+			php = "-"
+			preset = "-"
+		}
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, sType, php, preset, status); err != nil {
 			return err
 		}
 	}

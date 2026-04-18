@@ -81,6 +81,11 @@ func RenderVHost(siteType string, data VHostData) (string, error) {
 	return defaultRenderer.render(tmplName, data)
 }
 
+// RenderIndexHTML renders a placeholder index page for HTML sites.
+func RenderIndexHTML(domain string) (string, error) {
+	return defaultRenderer.render("index-html.html.tmpl", struct{ Domain string }{Domain: domain})
+}
+
 // RenderMaintenance renders a static 503 maintenance page for a domain.
 func RenderMaintenance(domain string) (string, error) {
 	return defaultRenderer.render("maintenance.html.tmpl", struct{ Domain string }{Domain: domain})
