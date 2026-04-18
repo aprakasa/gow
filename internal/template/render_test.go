@@ -345,6 +345,42 @@ func TestRenderMaintenance(t *testing.T) {
 	}
 }
 
+const htmlVHostGolden = `docRoot                   /var/www/static.test/htdocs
+vhDomain                  static.test
+enableGzip                1
+
+index  {
+  useServer               0
+  indexFiles              index.html, index.htm
+}
+
+errorlog /var/log/lsws/static.test.error.log {
+  useServer               0
+  logLevel                WARN
+}
+
+accesslog /var/log/lsws/static.test.access.log {
+  useServer               0
+  logFormat               "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\""
+}
+`
+
+func TestRenderVHostHTMLMatchesGolden(t *testing.T) {
+	data := VHostData{
+		Site:    "static.test",
+		Domain:  "static.test",
+		WebRoot: "/var/www/static.test",
+		LogDir:  "/var/log/lsws",
+	}
+	got, err := RenderVHost("html", data)
+	if err != nil {
+		t.Fatalf("RenderVHost(html) error = %v", err)
+	}
+	if got != htmlVHostGolden {
+		t.Errorf("mismatch.\ngot:\n%s\nwant:\n%s", got, htmlVHostGolden)
+	}
+}
+
 func TestRenderVHostWP(t *testing.T) {
 	data := fixtureVHost()
 	got, err := RenderVHost("wp", data)
