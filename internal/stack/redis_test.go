@@ -14,8 +14,8 @@ func TestRedis_Install_AddsKeySourceAndInstalls(t *testing.T) {
 		t.Fatalf("Install() = %v", err)
 	}
 
-	if len(calls) < 4 {
-		t.Fatalf("expected at least 4 calls, got %d", len(calls))
+	if len(calls) < 7 {
+		t.Fatalf("expected at least 7 calls, got %d", len(calls))
 	}
 
 	if calls[0].name != "sh" {
@@ -53,6 +53,28 @@ func TestRedis_Install_AddsKeySourceAndInstalls(t *testing.T) {
 	}
 	if !foundStart {
 		t.Error("expected systemctl start redis-server call")
+	}
+
+	foundSocket, foundUsermod, foundRestart := false, false, false
+	for _, c := range calls {
+		if c.name == "sh" && containsAny(c.args, "unixsocket") {
+			foundSocket = true
+		}
+		if c.name == "usermod" && containsAny(c.args, "nobody") && containsAny(c.args, "redis") {
+			foundUsermod = true
+		}
+		if c.name == "systemctl" && containsAny(c.args, "restart") && containsAny(c.args, "redis") {
+			foundRestart = true
+		}
+	}
+	if !foundSocket {
+		t.Error("expected sed unixsocket config call")
+	}
+	if !foundUsermod {
+		t.Error("expected usermod nobody redis call")
+	}
+	if !foundRestart {
+		t.Error("expected systemctl restart redis-server call")
 	}
 }
 
@@ -255,5 +277,25 @@ func TestRedis_Remove(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected apt-get remove redis call")
+	}
+}
+
+func TestRedis_Active_UsesSocketPath(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if _, err := c.Active(mr); err != nil {
+		t.Fatalf("Active() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "redis-cli" && containsAny(c.args, "/var/run/redis/redis.sock") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected redis-cli with socket path")
 	}
 }
