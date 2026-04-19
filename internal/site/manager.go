@@ -4,6 +4,7 @@
 package site
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,158 +52,137 @@ func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, pol
 // HTML sites are rendered separately (no PHP, no allocator). PHP-enabled sites
 // go through the allocator for resource computation. Sites in maintenance mode
 // get a static 503 page instead of their normal vhost config.
-func (m *Manager) Reconcile() error {
+func (m *Manager) Reconcile(ctx context.Context) error {
 	sites := m.store.Sites()
 	if len(sites) == 0 {
 		return nil
 	}
 
-	// Ensure SSL listener if any site needs it.
+	// Compute allocations once for PHP-enabled sites. HTML sites skip the
+	// allocator entirely — their VHostData fields for PHP/memory stay zero.
+	allocByName, err := m.computeAllocations(sites)
+	if err != nil {
+		return err
+	}
+
+	// Open httpd_config.conf once and batch every register/SSL edit.
+	httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
+	hc, err := ols.OpenHttpd(httpdConfPath)
+	if err != nil {
+		return fmt.Errorf("site: open httpd config: %w", err)
+	}
+
+	anySSL := false
 	for _, s := range sites {
 		if s.SSLEnabled {
-			httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
-			if err := ols.EnsureSSLListener(httpdConfPath); err != nil {
-				return fmt.Errorf("site: ensure SSL listener: %w", err)
-			}
-			if err := ols.SetSSLListenerCerts(httpdConfPath, s.CertPath, s.KeyPath); err != nil {
-				return fmt.Errorf("site: set SSL listener certs: %w", err)
-			}
+			anySSL = true
 			break
 		}
 	}
+	if anySSL {
+		hc.EnsureSSLListener()
+		for _, s := range sites {
+			if s.SSLEnabled {
+				hc.SetSSLListenerCerts(s.CertPath, s.KeyPath)
+				break
+			}
+		}
+	}
 
-	// Build allocator inputs only for PHP-enabled sites.
+	for _, s := range sites {
+		if err := m.renderAndRegisterSite(ctx, s, allocByName[s.Name], hc); err != nil {
+			return err
+		}
+	}
+
+	if err := hc.Save(); err != nil {
+		return fmt.Errorf("site: save httpd config: %w", err)
+	}
+
+	if err := m.ols.Validate(ctx); err != nil {
+		return fmt.Errorf("site: validate: %w", err)
+	}
+	return m.ols.GracefulReload(ctx)
+}
+
+// computeAllocations returns a name→Allocation map for PHP-enabled sites.
+// HTML sites are absent from the map; callers get the zero Allocation, which
+// the template handles correctly (no PHP fields emitted).
+func (m *Manager) computeAllocations(sites []state.Site) (map[string]allocator.Allocation, error) {
 	inputs := make([]allocator.SiteInput, 0, len(sites))
-	siteIndex := make([]int, 0, len(sites)) // maps allocs index -> sites index
-	for i, s := range sites {
+	for _, s := range sites {
 		if siteType(s) == "html" {
 			continue
 		}
-		in := allocator.SiteInput{
-			Name:   s.Name,
-			Preset: s.Preset,
-		}
+		in := allocator.SiteInput{Name: s.Name, Preset: s.Preset}
 		if s.CustomPreset != nil {
 			in.CustomPHPMemoryMB = s.CustomPreset.PHPMemoryMB
 			in.CustomWorkerBudgetMB = s.CustomPreset.WorkerBudgetMB
 		}
 		inputs = append(inputs, in)
-		siteIndex = append(siteIndex, i)
+	}
+	out := map[string]allocator.Allocation{}
+	if len(inputs) == 0 {
+		return out, nil
+	}
+	allocs, err := allocator.Compute(m.specs.TotalRAMMB, m.specs.CPUCores, inputs, m.policy)
+	if err != nil {
+		return nil, fmt.Errorf("site: reconcile: %w", err)
+	}
+	for _, a := range allocs {
+		out[a.Site] = a
+	}
+	return out, nil
+}
+
+// renderAndRegisterSite writes the site's vhconf.conf and stages all
+// httpd_config.conf edits onto hc. The caller commits hc.Save() once all
+// sites are processed. alloc is zero-valued for HTML sites.
+func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc allocator.Allocation, hc *ols.HttpdConf) error {
+	vhostDir := filepath.Join(m.confDir, "vhosts", s.Name)
+	if err := os.MkdirAll(vhostDir, 0o750); err != nil { //nolint:gosec // OLS needs readable vhost dirs
+		return fmt.Errorf("site: create vhost dir %s: %w", vhostDir, err)
+	}
+	siteRoot := filepath.Join(m.webRoot, s.Name)
+	data := template.VHostData{
+		Site:             s.Name,
+		Domain:           s.Name,
+		WebRoot:          siteRoot,
+		LogDir:           "/var/log/lsws",
+		PHPVer:           s.PHPVersion,
+		Children:         int(alloc.Children),
+		PHPMemoryLimitMB: alloc.PHPMemoryLimitMB,
+		MemSoftMB:        alloc.MemSoftMB,
+		MemHardMB:        alloc.MemHardMB,
+		SSLEnabled:       s.SSLEnabled,
+		CertPath:         s.CertPath,
+		KeyPath:          s.KeyPath,
 	}
 
-	// Render html sites (no PHP, no allocator).
-	for _, s := range sites {
-		if siteType(s) != "html" {
-			continue
-		}
-		vhostDir := filepath.Join(m.confDir, "vhosts", s.Name)
-		if err := os.MkdirAll(vhostDir, 0o750); err != nil { //nolint:gosec // OLS needs readable vhost dirs
-			return fmt.Errorf("site: create vhost dir %s: %w", vhostDir, err)
-		}
-		siteRoot := filepath.Join(m.webRoot, s.Name)
-		data := template.VHostData{
-			Site:       s.Name,
-			Domain:     s.Name,
-			WebRoot:    siteRoot,
-			LogDir:     "/var/log/lsws",
-			SSLEnabled: s.SSLEnabled,
-			CertPath:   s.CertPath,
-			KeyPath:    s.KeyPath,
-		}
-		var content string
-		var err error
-		if s.Maintenance {
-			content, err = renderMaintenanceVHost(data)
-		} else {
-			content, err = template.RenderVHost("html", data)
-		}
-		if err != nil {
-			return fmt.Errorf("site: render vhost %s: %w", s.Name, err)
-		}
-		vhostPath := filepath.Join(vhostDir, "vhconf.conf")
-		if err := os.WriteFile(vhostPath, []byte(content), 0o644); err != nil { //nolint:gosec // config file, not secret
-			return fmt.Errorf("site: write %s: %w", vhostPath, err)
-		}
-		confFile := "conf/vhosts/" + s.Name + "/vhconf.conf"
-		httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
-		if err := ols.RegisterVHost(httpdConfPath, s.Name, siteRoot, confFile); err != nil {
-			return fmt.Errorf("site: register vhost %s: %w", s.Name, err)
-		}
-		if s.SSLEnabled {
-			if err := ols.AddSSLMapEntry(httpdConfPath, s.Name); err != nil {
-				return fmt.Errorf("site: add SSL map %s: %w", s.Name, err)
-			}
-			if err := ols.SetVHostSSL(httpdConfPath, s.Name, s.CertPath, s.KeyPath); err != nil {
-				return fmt.Errorf("site: set vhost SSL %s: %w", s.Name, err)
-			}
-		}
+	variant := siteType(s)
+	var content string
+	var err error
+	if s.Maintenance {
+		content, err = renderMaintenanceVHost(data)
+	} else {
+		content, err = template.RenderVHost(variant, data)
+	}
+	if err != nil {
+		return fmt.Errorf("site: render vhost %s: %w", s.Name, err)
 	}
 
-	// Compute allocations for PHP-enabled sites.
-	if len(inputs) > 0 {
-		allocs, err := allocator.Compute(m.specs.TotalRAMMB, m.specs.CPUCores, inputs, m.policy)
-		if err != nil {
-			return fmt.Errorf("site: reconcile: %w", err)
-		}
-
-		for j, a := range allocs {
-			s := sites[siteIndex[j]]
-			vhostDir := filepath.Join(m.confDir, "vhosts", a.Site)
-			if err := os.MkdirAll(vhostDir, 0o750); err != nil { //nolint:gosec // OLS needs readable vhost dirs
-				return fmt.Errorf("site: create vhost dir %s: %w", vhostDir, err)
-			}
-			siteRoot := filepath.Join(m.webRoot, a.Site)
-			data := template.VHostData{
-				Site:             a.Site,
-				Domain:           a.Site,
-				WebRoot:          siteRoot,
-				LogDir:           "/var/log/lsws",
-				PHPVer:           s.PHPVersion,
-				Children:         int(a.Children),
-				PHPMemoryLimitMB: a.PHPMemoryLimitMB,
-				MemSoftMB:        a.MemSoftMB,
-				MemHardMB:        a.MemHardMB,
-				SSLEnabled:       s.SSLEnabled,
-				CertPath:         s.CertPath,
-				KeyPath:          s.KeyPath,
-			}
-
-			var content string
-			if s.Maintenance {
-				content, err = renderMaintenanceVHost(data)
-			} else {
-				content, err = template.RenderVHost(siteType(s), data)
-			}
-			if err != nil {
-				return fmt.Errorf("site: render vhost %s: %w", a.Site, err)
-			}
-
-			vhostPath := filepath.Join(vhostDir, "vhconf.conf")
-			if err := os.WriteFile(vhostPath, []byte(content), 0o644); err != nil { //nolint:gosec // config file, not secret
-				return fmt.Errorf("site: write %s: %w", vhostPath, err)
-			}
-
-			confFile := "conf/vhosts/" + a.Site + "/vhconf.conf"
-			httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
-			if err := ols.RegisterVHost(httpdConfPath, a.Site, siteRoot, confFile); err != nil {
-				return fmt.Errorf("site: register vhost %s: %w", a.Site, err)
-			}
-			if s.SSLEnabled {
-				if err := ols.AddSSLMapEntry(httpdConfPath, a.Site); err != nil {
-					return fmt.Errorf("site: add SSL map %s: %w", a.Site, err)
-				}
-				if err := ols.SetVHostSSL(httpdConfPath, a.Site, s.CertPath, s.KeyPath); err != nil {
-					return fmt.Errorf("site: set vhost SSL %s: %w", a.Site, err)
-				}
-			}
-		}
+	vhostPath := filepath.Join(vhostDir, "vhconf.conf")
+	if err := os.WriteFile(vhostPath, []byte(content), 0o644); err != nil { //nolint:gosec // config file, not secret
+		return fmt.Errorf("site: write %s: %w", vhostPath, err)
 	}
 
-	// Validate and reload OLS.
-	if err := m.ols.Validate(); err != nil {
-		return fmt.Errorf("site: validate: %w", err)
+	confFile := "conf/vhosts/" + s.Name + "/vhconf.conf"
+	hc.RegisterVHost(s.Name, siteRoot, confFile)
+	if s.SSLEnabled {
+		hc.AddSSLMapEntry(s.Name)
+		hc.SetVHostSSL(s.Name, s.CertPath, s.KeyPath)
 	}
-	return m.ols.GracefulReload()
+	return nil
 }
 
 // renderMaintenanceVHost renders a vhost that serves a static 503 maintenance
@@ -246,6 +226,6 @@ func needsIsolation(siteType string) bool {
 }
 
 // userExists checks whether a system user exists by running `id <name>`.
-func (m *Manager) userExists(name string) bool {
-	return m.runner.Run("id", name) == nil
+func (m *Manager) userExists(ctx context.Context, name string) bool {
+	return m.runner.Run(ctx, "id", name) == nil
 }
