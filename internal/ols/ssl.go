@@ -174,6 +174,57 @@ func SetSSLListenerCerts(httpdConfPath, certPath, keyPath string) error {
 	return os.WriteFile(httpdConfPath, buf.Bytes(), 0o644) //nolint:gosec // config file
 }
 
+// SetVHostSSL adds a vhssl block with certFile and keyFile inside a virtualHost
+// block in httpd_config.conf. OLS reads SSL certs from the virtualHost block
+// for SNI, not from the included vhconf.conf. If the vhssl block already exists,
+// it is a no-op.
+func SetVHostSSL(httpdConfPath, siteName, certPath, keyPath string) error {
+	data, err := os.ReadFile(httpdConfPath) //nolint:gosec // config file, not secret
+	if err != nil {
+		return fmt.Errorf("ols: read httpd config: %w", err)
+	}
+
+	content := string(data)
+
+	// Check if ssl block already exists in this virtualHost.
+	vhostHeader := "virtualHost " + siteName + " {"
+	idx := strings.Index(content, vhostHeader)
+	if idx == -1 {
+		return nil
+	}
+
+	// Find the end of this virtualHost block.
+	end := idx + len(vhostHeader)
+	depth := 1
+	for i := end; i < len(content); i++ {
+		if content[i] == '{' {
+			depth++
+		} else if content[i] == '}' {
+			depth--
+			if depth == 0 {
+				end = i + 1
+				break
+			}
+		}
+	}
+
+	vhostBlock := content[idx:end]
+	if strings.Contains(vhostBlock, "certFile") {
+		return nil
+	}
+
+	// Insert ssl block before closing brace.
+	sslBlock := "\n    vhssl {\n" +
+		"        certFile                 " + certPath + "\n" +
+		"        keyFile                  " + keyPath + "\n" +
+		"        certChain                1\n" +
+		"    }\n"
+
+	content = content[:end-1] + sslBlock + content[end-1:]
+
+	return os.WriteFile(httpdConfPath, []byte(content), 0o644) //nolint:gosec // config file
+}
+
 // insertMapEntryForListener finds a named listener block and inserts a map
 // entry before its closing brace.
 func insertMapEntryForListener(content, listenerName, siteName string) (string, error) {

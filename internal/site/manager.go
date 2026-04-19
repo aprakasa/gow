@@ -132,6 +132,9 @@ func (m *Manager) Reconcile() error {
 			if err := ols.AddSSLMapEntry(httpdConfPath, s.Name); err != nil {
 				return fmt.Errorf("site: add SSL map %s: %w", s.Name, err)
 			}
+			if err := ols.SetVHostSSL(httpdConfPath, s.Name, s.CertPath, s.KeyPath); err != nil {
+				return fmt.Errorf("site: set vhost SSL %s: %w", s.Name, err)
+			}
 		}
 	}
 
@@ -187,6 +190,9 @@ func (m *Manager) Reconcile() error {
 			if s.SSLEnabled {
 				if err := ols.AddSSLMapEntry(httpdConfPath, a.Site); err != nil {
 					return fmt.Errorf("site: add SSL map %s: %w", a.Site, err)
+				}
+				if err := ols.SetVHostSSL(httpdConfPath, a.Site, s.CertPath, s.KeyPath); err != nil {
+					return fmt.Errorf("site: set vhost SSL %s: %w", a.Site, err)
 				}
 			}
 		}

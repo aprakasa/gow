@@ -1,7 +1,7 @@
 docRoot                   {{.WebRoot}}/htdocs
 vhDomain                  {{.Domain}}
 enableGzip                1
-{{if .SSLEnabled}}ssl {
+{{if .SSLEnabled}}vhssl {
   certFile                 {{.CertPath}}
   keyFile                  {{.KeyPath}}
   certChain                1
