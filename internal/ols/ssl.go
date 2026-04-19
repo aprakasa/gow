@@ -121,6 +121,59 @@ func extractListenerBlock(content, listenerName string) string {
 	return content[idx:]
 }
 
+// SetSSLListenerCerts adds certFile and keyFile to the SSL listener block if
+// they are not already present. OLS requires listener-level certs as the SNI
+// default even when per-vhost SSL is configured.
+func SetSSLListenerCerts(httpdConfPath, certPath, keyPath string) error {
+	data, err := os.ReadFile(httpdConfPath) //nolint:gosec // config file, not secret
+	if err != nil {
+		return fmt.Errorf("ols: read httpd config: %w", err)
+	}
+
+	content := string(data)
+	sslBlock := extractListenerBlock(content, "SSL")
+	if sslBlock == "" {
+		return nil
+	}
+	if strings.Contains(sslBlock, "certFile") && strings.Contains(sslBlock, "keyFile") {
+		return nil
+	}
+
+	certLine := "    certFile                 " + certPath + "\n"
+	keyLine := "    keyFile                  " + keyPath + "\n"
+
+	// Insert cert/key before the closing brace of the SSL listener.
+	header := "listener SSL {"
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	var buf bytes.Buffer
+	inTarget := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		trimmedRight := strings.TrimRight(trimmed, " \t")
+
+		if !inTarget && strings.HasPrefix(trimmed, header) {
+			inTarget = true
+		}
+
+		if inTarget && trimmedRight == "}" {
+			buf.WriteString(certLine)
+			buf.WriteString(keyLine)
+			inTarget = false
+		}
+
+		buf.WriteString(line)
+		buf.WriteByte('\n')
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("ols: scan httpd config: %w", err)
+	}
+
+	return os.WriteFile(httpdConfPath, buf.Bytes(), 0o644) //nolint:gosec // config file
+}
+
 // insertMapEntryForListener finds a named listener block and inserts a map
 // entry before its closing brace.
 func insertMapEntryForListener(content, listenerName, siteName string) (string, error) {

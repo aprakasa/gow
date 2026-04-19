@@ -64,6 +64,9 @@ func (m *Manager) Reconcile() error {
 			if err := ols.EnsureSSLListener(httpdConfPath); err != nil {
 				return fmt.Errorf("site: ensure SSL listener: %w", err)
 			}
+			if err := ols.SetSSLListenerCerts(httpdConfPath, s.CertPath, s.KeyPath); err != nil {
+				return fmt.Errorf("site: set SSL listener certs: %w", err)
+			}
 			break
 		}
 	}
