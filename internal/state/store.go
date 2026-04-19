@@ -21,6 +21,9 @@ type Site struct {
 	CustomPreset *CustomPreset `json:"preset_custom,omitempty"`
 	Maintenance  bool          `json:"maintenance"`
 	UnixUser     string        `json:"unix_user,omitempty"`
+	SSLEnabled   bool          `json:"ssl_enabled"`
+	CertPath     string        `json:"cert_path,omitempty"`
+	KeyPath      string        `json:"key_path,omitempty"`
 	CreatedAt    time.Time     `json:"created_at"`
 }
 

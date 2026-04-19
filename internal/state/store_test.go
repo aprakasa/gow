@@ -333,6 +333,35 @@ func TestCustomPresetOmittedWhenNil(t *testing.T) {
 	}
 }
 
+// --- SSL fields ---
+
+func TestSiteJSON_SSLEnabled(t *testing.T) {
+	original := Site{
+		Name:       "ssl.test",
+		Type:       "wp",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
+	}
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got Site
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !got.SSLEnabled {
+		t.Error("SSLEnabled = false, want true")
+	}
+	if got.CertPath != original.CertPath {
+		t.Errorf("CertPath = %q, want %q", got.CertPath, original.CertPath)
+	}
+	if got.KeyPath != original.KeyPath {
+		t.Errorf("KeyPath = %q, want %q", got.KeyPath, original.KeyPath)
+	}
+}
+
 // --- Delete propagation ---
 
 func TestSaveAfterRemove(t *testing.T) {
