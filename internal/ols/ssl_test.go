@@ -6,34 +6,6 @@ import (
 	"testing"
 )
 
-// findListenerEnd returns the position just after the closing brace of a block
-// that starts at startPos.
-func findListenerEnd(content string, startPos int) int {
-	depth := 0
-	for i := startPos; i < len(content); i++ {
-		if content[i] == '{' {
-			depth++
-		} else if content[i] == '}' {
-			depth--
-			if depth == 0 {
-				return i + 1
-			}
-		}
-	}
-	return len(content)
-}
-
-// extractListenerBlock extracts the text of a named listener block from content.
-func extractListenerBlock(content, listenerName string) string {
-	header := "listener " + listenerName + " {"
-	idx := strings.Index(content, header)
-	if idx == -1 {
-		return ""
-	}
-	end := findListenerEnd(content, idx)
-	return content[idx:end]
-}
-
 func TestEnsureSSLListener_AddsListener(t *testing.T) {
 	p := writeHttpdConf(t, baseHttpdConf())
 
@@ -176,5 +148,76 @@ func TestRemoveSSLMapEntry_NotFound(t *testing.T) {
 
 	if err := RemoveSSLMapEntry(p, "nope.test"); err != nil {
 		t.Fatalf("RemoveSSLMapEntry() = %v, want nil for missing entry", err)
+	}
+}
+
+// TestAddSSLMapEntry_WithExistingDefaultMap verifies that AddSSLMapEntry correctly
+// adds the entry to the SSL listener even when the same map text already exists
+// in the Default listener (the bug fixed after code review).
+func TestAddSSLMapEntry_WithExistingDefaultMap(t *testing.T) {
+	// Start with blog.test already mapped in Default listener (simulates
+	// RegisterVHost having run before AddSSLMapEntry).
+	conf := baseHttpdConf()
+	conf = strings.Replace(conf,
+		"map                      Example *",
+		"map                      Example *\n    map                      blog.test blog.test",
+		1,
+	)
+	p := writeHttpdConf(t, conf)
+
+	if err := EnsureSSLListener(p); err != nil {
+		t.Fatalf("EnsureSSLListener: %v", err)
+	}
+	if err := AddSSLMapEntry(p, "blog.test"); err != nil {
+		t.Fatalf("AddSSLMapEntry() = %v", err)
+	}
+
+	got, _ := os.ReadFile(p) //nolint:gosec // test
+	content := string(got)
+
+	// Must be in SSL listener specifically.
+	sslBlock := extractListenerBlock(content, "SSL")
+	if !strings.Contains(sslBlock, "map                      blog.test blog.test") {
+		t.Errorf("SSL listener missing map entry for blog.test.\nSSL block:\n%s", sslBlock)
+	}
+
+	// Should be exactly 2 occurrences total (Default + SSL).
+	count := strings.Count(content, "map                      blog.test blog.test")
+	if count != 2 {
+		t.Errorf("blog.test map appears %d times, want 2 (Default + SSL)", count)
+	}
+}
+
+// TestRemoveSSLMapEntry_OnlyRemovesFromSSL verifies that RemoveSSLMapEntry
+// removes from the SSL listener, not the Default listener.
+func TestRemoveSSLMapEntry_OnlyRemovesFromSSL(t *testing.T) {
+	conf := baseHttpdConf()
+	// Add blog.test to both Default and SSL listener.
+	conf = strings.Replace(conf,
+		"map                      Example *",
+		"map                      Example *\n    map                      blog.test blog.test",
+		1,
+	)
+	p := writeHttpdConf(t, conf)
+	EnsureSSLListener(p)
+	AddSSLMapEntry(p, "blog.test")
+
+	if err := RemoveSSLMapEntry(p, "blog.test"); err != nil {
+		t.Fatalf("RemoveSSLMapEntry() = %v", err)
+	}
+
+	got, _ := os.ReadFile(p) //nolint:gosec // test
+	content := string(got)
+
+	// Default listener should still have the map entry.
+	defaultBlock := extractListenerBlock(content, "Default")
+	if !strings.Contains(defaultBlock, "map                      blog.test blog.test") {
+		t.Error("Default listener should still have blog.test map entry")
+	}
+
+	// SSL listener should NOT have it.
+	sslBlock := extractListenerBlock(content, "SSL")
+	if strings.Contains(sslBlock, "map                      blog.test blog.test") {
+		t.Error("SSL listener should NOT have blog.test map entry after removal")
 	}
 }

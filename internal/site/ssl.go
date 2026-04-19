@@ -36,6 +36,12 @@ func (m *Manager) EnableSSL(name, email string, staging bool) error {
 	certPath := "/etc/letsencrypt/live/" + name + "/fullchain.pem"
 	keyPath := "/etc/letsencrypt/live/" + name + "/privkey.pem"
 
+	for _, p := range []string{certPath, keyPath} {
+		if err := m.runner.Run("test", "-f", p); err != nil {
+			return fmt.Errorf("site: ssl %s: cert file not found: %s: %w", name, p, err)
+		}
+	}
+
 	if err := m.store.Update(name, func(s *state.Site) {
 		s.SSLEnabled = true
 		s.CertPath = certPath

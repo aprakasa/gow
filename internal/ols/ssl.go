@@ -34,7 +34,7 @@ func EnsureSSLListener(httpdConfPath string) error {
 }
 
 // AddSSLMapEntry adds a map entry for siteName inside the SSL listener block.
-// If the entry already exists anywhere in the file, it returns nil without
+// If the entry already exists in the SSL listener, it returns nil without
 // modifying the file.
 func AddSSLMapEntry(httpdConfPath, siteName string) error {
 	data, err := os.ReadFile(httpdConfPath) //nolint:gosec // config file, not secret
@@ -45,7 +45,8 @@ func AddSSLMapEntry(httpdConfPath, siteName string) error {
 	content := string(data)
 
 	mapEntry := "map                      " + siteName + " " + siteName
-	if strings.Contains(content, mapEntry) {
+	sslBlock := extractListenerBlock(content, "SSL")
+	if sslBlock != "" && strings.Contains(sslBlock, mapEntry) {
 		return nil
 	}
 
@@ -57,8 +58,8 @@ func AddSSLMapEntry(httpdConfPath, siteName string) error {
 	return os.WriteFile(httpdConfPath, []byte(content), 0o644) //nolint:gosec // config file
 }
 
-// RemoveSSLMapEntry removes one occurrence of the map entry for siteName from
-// the file. If the entry is not present, it returns nil without modifying the
+// RemoveSSLMapEntry removes the map entry for siteName from the SSL listener
+// block. If the entry is not present, it returns nil without modifying the
 // file.
 func RemoveSSLMapEntry(httpdConfPath, siteName string) error {
 	data, err := os.ReadFile(httpdConfPath) //nolint:gosec // config file, not secret
@@ -67,16 +68,57 @@ func RemoveSSLMapEntry(httpdConfPath, siteName string) error {
 	}
 
 	content := string(data)
-	original := content
-
 	mapLine := "    map                      " + siteName + " " + siteName + "\n"
-	content = strings.Replace(content, mapLine, "", 1)
 
-	if content == original {
+	// Find the SSL listener block and remove the map line from within it.
+	header := "listener SSL {"
+	idx := strings.Index(content, header)
+	if idx == -1 {
 		return nil
 	}
+	end := idx + len(header)
+	depth := 1
+	for i := end; i < len(content); i++ {
+		if content[i] == '{' {
+			depth++
+		} else if content[i] == '}' {
+			depth--
+			if depth == 0 {
+				end = i + 1
+				break
+			}
+		}
+	}
+	block := content[idx:end]
+	newBlock := strings.Replace(block, mapLine, "", 1)
+	if newBlock == block {
+		return nil
+	}
+	content = content[:idx] + newBlock + content[end:]
 
 	return os.WriteFile(httpdConfPath, []byte(content), 0o644) //nolint:gosec // config file
+}
+
+// extractListenerBlock returns the text of a named listener block (from its
+// header through its closing brace). Returns empty string if not found.
+func extractListenerBlock(content, listenerName string) string {
+	header := "listener " + listenerName + " {"
+	idx := strings.Index(content, header)
+	if idx == -1 {
+		return ""
+	}
+	depth := 0
+	for i := idx; i < len(content); i++ {
+		if content[i] == '{' {
+			depth++
+		} else if content[i] == '}' {
+			depth--
+			if depth == 0 {
+				return content[idx : i+1]
+			}
+		}
+	}
+	return content[idx:]
 }
 
 // insertMapEntryForListener finds a named listener block and inserts a map
