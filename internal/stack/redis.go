@@ -95,6 +95,7 @@ func Redis() Component {
 			if err != nil {
 				return "", err
 			}
+			_ = r.Run("test", "-S", "/var/run/redis/redis.sock")
 			return strings.TrimSpace(out), nil
 		},
 		StartFn: func(r Runner) error {

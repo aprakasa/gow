@@ -1134,8 +1134,23 @@ func installWordPress(domain, webRoot string) error {
 	}
 	fmt.Println(" OK")
 
-	// Configure LSCache object cache (Redis via Unix socket).
-	fmt.Print("  Configuring object cache...")
+		// Configure LSCache object cache (Redis via Unix socket).
+		fmt.Print("  Configuring object cache...")
+		if err := configureObjectCache(r, docRoot); err != nil {
+			return err
+		}
+		fmt.Println(" OK")
+
+	fmt.Printf("\n  URL:      http://%s\n", domain)
+	fmt.Printf("  Username: %s\n", adminUser)
+	fmt.Printf("  Password: %s\n", adminPass)
+
+	return nil
+}
+
+// configureObjectCache sets up LSCache to use Redis via Unix socket as object
+// cache and copies the object-cache.php drop-in.
+func configureObjectCache(r stack.Runner, docRoot string) error {
 	phpEval := `$conf = get_option('litespeed-cache-conf', array());
 if (!is_array($conf)) $conf = array();
 $conf['object'] = true;
@@ -1173,12 +1188,6 @@ file_put_contents(WP_CONTENT_DIR . '/.litespeed_conf.dat', wp_json_encode($dat))
 	); err != nil {
 		return fmt.Errorf("copy object-cache drop-in: %w", err)
 	}
-	fmt.Println(" OK")
-
-	fmt.Printf("\n  URL:      http://%s\n", domain)
-	fmt.Printf("  Username: %s\n", adminUser)
-	fmt.Printf("  Password: %s\n", adminPass)
-
 	return nil
 }
 

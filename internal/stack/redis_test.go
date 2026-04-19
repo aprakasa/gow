@@ -299,3 +299,23 @@ func TestRedis_Active_UsesSocketPath(t *testing.T) {
 		t.Error("expected redis-cli with socket path")
 	}
 }
+
+func TestRedis_Status_ChecksSocket(t *testing.T) {
+	var calls []call
+	mr := &loggingRunner{calls: &calls}
+
+	c := Redis()
+	if _, err := c.Status(mr); err != nil {
+		t.Fatalf("Status() = %v", err)
+	}
+
+	found := false
+	for _, c := range calls {
+		if c.name == "test" && containsAny(c.args, "-S") && containsAny(c.args, "/var/run/redis/redis.sock") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected test -S /var/run/redis/redis.sock call")
+	}
+}

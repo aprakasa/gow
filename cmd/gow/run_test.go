@@ -316,3 +316,81 @@ func TestNewManagerWithDeps_OpenStoreFails(t *testing.T) {
 		t.Errorf("error = %q, want 'open state'", err.Error())
 	}
 }
+
+// --- Logging runner for unit tests ---
+
+type cmdCall struct {
+	name string
+	args []string
+}
+
+type cmdLoggingRunner struct {
+	calls []cmdCall
+}
+
+func (r *cmdLoggingRunner) Run(name string, args ...string) error {
+	r.calls = append(r.calls, cmdCall{name, args})
+	return nil
+}
+
+func (r *cmdLoggingRunner) Output(name string, args ...string) (string, error) {
+	r.calls = append(r.calls, cmdCall{name, args})
+	return "", nil
+}
+
+func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
+	r := &cmdLoggingRunner{}
+	docRoot := "/var/www/example.com/htdocs"
+
+	if err := configureObjectCache(r, docRoot); err != nil {
+		t.Fatalf("configureObjectCache() = %v", err)
+	}
+
+	foundEval, foundCP := false, false
+	for _, c := range r.calls {
+		if c.name == stack.WPCLIBinPath {
+			foundEval = true
+			hasEval := false
+			hasPath := false
+			for _, a := range c.args {
+				if a == "eval" {
+					hasEval = true
+				}
+				if strings.Contains(a, "--path="+docRoot) {
+					hasPath = true
+				}
+			}
+			if !hasEval {
+				t.Error("wp eval call missing 'eval' arg")
+			}
+			if !hasPath {
+				t.Error("wp eval call missing --path flag")
+			}
+		}
+		if c.name == "cp" {
+			foundCP = true
+			hasNoClobber := false
+			hasDropIn := false
+			for _, a := range c.args {
+				if a == "-n" {
+					hasNoClobber = true
+				}
+				if strings.Contains(a, "object-cache.php") {
+					hasDropIn = true
+				}
+			}
+			if !hasNoClobber {
+				t.Error("cp call missing -n flag")
+			}
+			if !hasDropIn {
+				t.Error("cp call missing object-cache.php path")
+			}
+		}
+	}
+	if !foundEval {
+		t.Error("expected wp eval call")
+	}
+	if !foundCP {
+		t.Error("expected cp object-cache.php drop-in call")
+	}
+}
