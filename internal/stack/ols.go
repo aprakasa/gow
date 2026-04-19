@@ -17,7 +17,14 @@ func OLS() Component {
 				return fmt.Errorf("add repo: %w", err)
 			}
 			if err := r.Run("apt-get", "install", "-y", "openlitespeed"); err != nil {
-				return fmt.Errorf("install package: %w", err)
+				// OLS postinst can be killed by dpkg due to a missing admin_php
+				// binary in fresh installs. If the package was unpacked
+				// successfully, force-fix the dpkg status and continue.
+				_ = r.Run("sh", "-c",
+					"sed -i 's/^Status: install ok half-configured/Status: install ok installed/' /var/lib/dpkg/status")
+				if err := r.Run(olsCtrlPath, "version"); err != nil {
+					return fmt.Errorf("install package: %w", err)
+				}
 			}
 			// Set listener to port 80 (default is 8088).
 			if err := r.Run("sed", "-i",

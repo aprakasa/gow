@@ -97,6 +97,44 @@ func TestOLS_Install_RepoSetupFails(t *testing.T) {
 	}
 }
 
+// aptFailRunner succeeds on all commands except apt-get install, simulating
+// the OLS postinst killed-by-dpkg scenario.
+type aptFailRunner struct {
+	calls []call
+}
+
+func (r *aptFailRunner) Run(name string, args ...string) error {
+	r.calls = append(r.calls, call{name, args})
+	if name == "apt-get" && len(args) > 0 && args[0] == "install" {
+		return errGeneric
+	}
+	return nil
+}
+
+func (r *aptFailRunner) Output(name string, args ...string) (string, error) {
+	r.calls = append(r.calls, call{name, args})
+	return "", nil
+}
+
+func TestOLS_Install_RecoversFromPostinstFailure(t *testing.T) {
+	r := &aptFailRunner{}
+
+	c := OLS()
+	if err := c.Install(r); err != nil {
+		t.Fatalf("Install() = %v, expected recovery from postinst failure", err)
+	}
+
+	foundSedFix := false
+	for _, c := range r.calls {
+		if c.name == "sh" && containsAny(c.args, "half-configured") {
+			foundSedFix = true
+		}
+	}
+	if !foundSedFix {
+		t.Error("expected sed dpkg status fix call")
+	}
+}
+
 func TestOLS_Purge_DeepCleans(t *testing.T) {
 	var calls []call
 	mr := &loggingRunner{calls: &calls}
