@@ -70,6 +70,8 @@ type siteFlags struct {
 	verbose      bool   // --verbose (info only)
 	noPrompt     bool   // --no-prompt (delete only)
 	isolate      bool   // --isolate (update only)
+	sslEmail     string // --email (ssl only)
+	sslStaging   bool   // --staging (ssl only)
 }
 
 type stackFlags struct {
@@ -184,7 +186,20 @@ func main() {
 	}
 	deleteCmd.Flags().BoolVar(&sDeleteFlags.noPrompt, "no-prompt", false, "Skip confirmation prompt")
 
-	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd)
+	var sSSLFlags siteFlags
+	sslCmd := &cobra.Command{
+		Use:   "ssl <domain>",
+		Short: "Enable SSL with Let's Encrypt",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return runSSL(cfg, sSSLFlags, args[0])
+		},
+	}
+	sslCmd.Flags().StringVar(&sSSLFlags.sslEmail, "email", "", "Let's Encrypt registration email")
+	sslCmd.Flags().BoolVar(&sSSLFlags.sslStaging, "staging", false, "Use Let's Encrypt staging server")
+	_ = sslCmd.MarkFlagRequired("email")
+
+	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd)
 
 	// --- Stack commands ---
 
@@ -625,6 +640,22 @@ func runDeleteWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error
 		}
 	}
 	fmt.Printf("Site %s deleted.\n", domain)
+	return nil
+}
+
+func runSSL(cfg cliConfig, sf siteFlags, domain string) error {
+	return runSSLWithDeps(cfg, sf, domain, defaultDeps)
+}
+
+func runSSLWithDeps(cfg cliConfig, sf siteFlags, domain string, d deps) error {
+	m, err := newManagerWithDeps(cfg, d)
+	if err != nil {
+		return err
+	}
+	if err := m.EnableSSL(domain, sf.sslEmail, sf.sslStaging); err != nil {
+		return err
+	}
+	fmt.Printf("SSL enabled for %s.\n", domain)
 	return nil
 }
 

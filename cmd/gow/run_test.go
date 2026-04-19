@@ -268,6 +268,27 @@ func TestRunStatusWithDeps_ShowAllocation(t *testing.T) {
 	}
 }
 
+func TestRunSSLWithDeps_Success(t *testing.T) {
+	e := newTestEnv(t)
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "ssl.test", e.deps)
+	if err := runSSLWithDeps(e.cfg, siteFlags{sslEmail: "admin@ssl.test"}, "ssl.test", e.deps); err != nil {
+		t.Fatalf("runSSLWithDeps() = %v", err)
+	}
+	store, _ := e.deps.openStore(e.cfg.stateFile)
+	got, _ := store.Find("ssl.test")
+	if !got.SSLEnabled {
+		t.Error("SSLEnabled should be true after ssl command")
+	}
+}
+
+func TestRunSSLWithDeps_NotFound(t *testing.T) {
+	e := newTestEnv(t)
+	err := runSSLWithDeps(e.cfg, siteFlags{sslEmail: "admin@test.com"}, "nope.test", e.deps)
+	if err == nil {
+		t.Fatal("expected error for nonexistent site")
+	}
+}
+
 func TestNewManagerWithDeps_DetectFails(t *testing.T) {
 	e := newTestEnv(t)
 	e.deps.detectSpecs = func() (system.Specs, error) {
