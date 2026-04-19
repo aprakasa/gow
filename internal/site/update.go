@@ -44,11 +44,13 @@ func (m *Manager) Update(name, phpVersion, preset string, custom *state.CustomPr
 	// Create system user and chown if isolating.
 	if isolate {
 		s, _ := m.store.Find(name)
-		if err := m.runner.Run("useradd", "--system", "--no-create-home",
-			"--shell", "/usr/sbin/nologin", s.UnixUser); err != nil {
-			// Roll back the UnixUser we just set in the store.
-			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
-			return fmt.Errorf("site: update %s: create user: %w", name, err)
+		if !m.userExists(s.UnixUser) {
+			if err := m.runner.Run("useradd", "--system", "--no-create-home",
+				"--shell", "/usr/sbin/nologin", s.UnixUser); err != nil {
+				// Roll back the UnixUser we just set in the store.
+				m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
+				return fmt.Errorf("site: update %s: create user: %w", name, err)
+			}
 		}
 		siteRoot := filepath.Join(m.webRoot, name)
 		if err := m.runner.Run("chown", "-R", s.UnixUser+":"+s.UnixUser, siteRoot); err != nil {

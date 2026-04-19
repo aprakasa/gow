@@ -338,6 +338,7 @@ type deps struct {
 	loadPolicy    func(string) (allocator.Policy, error)
 	openStore     func(string) (*state.Store, error)
 	newOLS        func() ols.Controller
+	newRunner     func() stack.Runner
 	installedPHP  func() []string
 	phpAvailable  func(string) bool
 	wpInstall     func(domain, webRoot string) error
@@ -349,6 +350,7 @@ var defaultDeps = deps{
 	loadPolicy:    allocator.LoadPolicyFromFile,
 	openStore:     state.Open,
 	newOLS:        func() ols.Controller { return ols.NewController(ols.DefaultBinPath) },
+	newRunner:     func() stack.Runner { return &stack.ShellRunner{} },
 	installedPHP:  detectInstalledPHP,
 	phpAvailable:  phpVersionInstalled,
 	wpInstall:     installWordPress,
@@ -372,7 +374,7 @@ func newManagerWithDeps(cfg cliConfig, d deps) (*site.Manager, error) {
 	}
 
 	ctrl := d.newOLS()
-	return site.NewManager(store, ctrl, specs, policy, cfg.confDir, cfg.webRoot, &stack.ShellRunner{}), nil
+	return site.NewManager(store, ctrl, specs, policy, cfg.confDir, cfg.webRoot, d.newRunner()), nil
 }
 
 func runCreate(cfg cliConfig, sf siteFlags, domain string) error {

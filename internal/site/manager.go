@@ -202,3 +202,14 @@ func siteType(s state.Site) string {
 func SiteUserName(domain string) string {
 	return "site-" + domain
 }
+
+// needsIsolation returns true for site types that run PHP and need a
+// dedicated system user.
+func needsIsolation(siteType string) bool {
+	return siteType != "html"
+}
+
+// userExists checks whether a system user exists by running `id <name>`.
+func (m *Manager) userExists(name string) bool {
+	return m.runner.Run("id", name) == nil
+}

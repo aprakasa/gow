@@ -11,8 +11,10 @@ import (
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
+	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
+	"github.com/aprakasa/gow/internal/testmock"
 )
 
 var errTestDetect = errors.New("detect failed")
@@ -60,6 +62,9 @@ func newTestEnv(t *testing.T) *testEnv {
 			},
 			newOLS: func() ols.Controller {
 				return &stubController{}
+			},
+			newRunner: func() stack.Runner {
+				return &testmock.NoopRunner{}
 			},
 			installedPHP: func() []string {
 				return []string{"81", "83"}

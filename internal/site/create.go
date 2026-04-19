@@ -39,8 +39,10 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 		PHPVersion:   phpVersion,
 		Preset:       preset,
 		CustomPreset: custom,
-		UnixUser:     SiteUserName(name),
 		CreatedAt:    time.Now().UTC(),
+	}
+	if needsIsolation(siteType) {
+		site.UnixUser = SiteUserName(name)
 	}
 	if err := m.store.Add(site); err != nil {
 		return fmt.Errorf("site: create %s: %w", name, err)
@@ -53,22 +55,26 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 		return fmt.Errorf("site: create %s: mkdir %s: %w", name, docRoot, err)
 	}
 
-	// Create system user for per-site isolation.
-	if err := m.runner.Run("useradd", "--system", "--no-create-home",
-		"--shell", "/usr/sbin/nologin", site.UnixUser); err != nil {
-		_ = m.store.Remove(name)
-		return fmt.Errorf("site: create %s: create user: %w", name, err)
-	}
-	siteRoot := filepath.Join(m.webRoot, name)
-	if err := m.runner.Run("chown", "-R", site.UnixUser+":"+site.UnixUser, siteRoot); err != nil {
-		_ = m.runner.Run("userdel", site.UnixUser)
-		_ = m.store.Remove(name)
-		return fmt.Errorf("site: create %s: chown: %w", name, err)
-	}
-	if err := m.runner.Run("usermod", "-aG", "redis", site.UnixUser); err != nil {
-		_ = m.runner.Run("userdel", site.UnixUser)
-		_ = m.store.Remove(name)
-		return fmt.Errorf("site: create %s: add to redis group: %w", name, err)
+	// Create system user for per-site isolation (PHP sites only).
+	if site.UnixUser != "" {
+		if !m.userExists(site.UnixUser) {
+			if err := m.runner.Run("useradd", "--system", "--no-create-home",
+				"--shell", "/usr/sbin/nologin", site.UnixUser); err != nil {
+				_ = m.store.Remove(name)
+				return fmt.Errorf("site: create %s: create user: %w", name, err)
+			}
+		}
+		siteRoot := filepath.Join(m.webRoot, name)
+		if err := m.runner.Run("chown", "-R", site.UnixUser+":"+site.UnixUser, siteRoot); err != nil {
+			_ = m.runner.Run("userdel", site.UnixUser)
+			_ = m.store.Remove(name)
+			return fmt.Errorf("site: create %s: chown: %w", name, err)
+		}
+		if err := m.runner.Run("usermod", "-aG", "redis", site.UnixUser); err != nil {
+			_ = m.runner.Run("userdel", site.UnixUser)
+			_ = m.store.Remove(name)
+			return fmt.Errorf("site: create %s: add to redis group: %w", name, err)
+		}
 	}
 
 	// Write a placeholder index page for HTML sites.
@@ -99,7 +105,9 @@ func (m *Manager) Create(name, siteType, phpVersion, preset string, custom *stat
 
 	if err := m.Reconcile(); err != nil {
 		// Best-effort rollback: remove the site and user we just created.
-		_ = m.runner.Run("userdel", site.UnixUser)
+		if site.UnixUser != "" {
+			_ = m.runner.Run("userdel", site.UnixUser)
+		}
 		_ = m.store.Remove(name)
 		return fmt.Errorf("site: create %s: reconcile: %w", name, err)
 	}

@@ -676,6 +676,9 @@ func TestCreate_HTMLSite(t *testing.T) {
 	if got.Type != "html" {
 		t.Errorf("Type = %q, want %q", got.Type, "html")
 	}
+	if got.UnixUser != "" {
+		t.Errorf("UnixUser = %q, want empty for HTML site", got.UnixUser)
+	}
 }
 
 func TestCreate_PHPSite(t *testing.T) {
