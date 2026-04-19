@@ -180,7 +180,7 @@ func main() {
 		Use:   "purge",
 		Short: "Purge stack packages and configs",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return app.RunStackPurge(purgeFlags, cfg, d)
+			return app.RunStackPurge(cfg, purgeFlags, d)
 		},
 	}
 	app.AddStackFlags(stackPurgeCmd, &purgeFlags)

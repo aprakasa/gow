@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -16,7 +17,7 @@ import (
 
 type stackOp struct {
 	name     string
-	fn       func(stack.Component, stack.Runner) error
+	fn       func(context.Context, stack.Component, stack.Runner) error
 	reverse  bool
 	validate bool // run Verify before fn, skip if not installed
 	service  bool // skip components without service functions (HasService)
@@ -25,43 +26,43 @@ type stackOp struct {
 var (
 	StackOpInstall = stackOp{
 		name:     "install",
-		fn:       func(c stack.Component, r stack.Runner) error { return c.Install(r) },
+		fn:       func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Install(ctx, r) },
 		validate: true,
 	}
 	StackOpUpgrade = stackOp{
 		name: "upgrade",
-		fn:   func(c stack.Component, r stack.Runner) error { return c.Upgrade(r) },
+		fn:   func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Upgrade(ctx, r) },
 	}
 	StackOpRemove = stackOp{
 		name:     "remove",
-		fn:       func(c stack.Component, r stack.Runner) error { return c.Remove(r) },
+		fn:       func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Remove(ctx, r) },
 		reverse:  true,
 		validate: true,
 	}
 	StackOpPurge = stackOp{
 		name:     "purge",
-		fn:       func(c stack.Component, r stack.Runner) error { return c.Purge(r) },
+		fn:       func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Purge(ctx, r) },
 		reverse:  true,
 		validate: true,
 	}
 	StackOpStart = stackOp{
 		name:    "start",
-		fn:      func(c stack.Component, r stack.Runner) error { return c.Start(r) },
+		fn:      func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Start(ctx, r) },
 		service: true,
 	}
 	StackOpStop = stackOp{
 		name:    "stop",
-		fn:      func(c stack.Component, r stack.Runner) error { return c.Stop(r) },
+		fn:      func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Stop(ctx, r) },
 		service: true,
 	}
 	StackOpRestart = stackOp{
 		name:    "restart",
-		fn:      func(c stack.Component, r stack.Runner) error { return c.Restart(r) },
+		fn:      func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Restart(ctx, r) },
 		service: true,
 	}
 	StackOpReload = stackOp{
 		name:    "reload",
-		fn:      func(c stack.Component, r stack.Runner) error { return c.Reload(r) },
+		fn:      func(ctx context.Context, c stack.Component, r stack.Runner) error { return c.Reload(ctx, r) },
 		service: true,
 	}
 )
@@ -81,8 +82,11 @@ func RunStackOp(sf StackFlags, op stackOp, d Deps) error {
 	}
 	components := stack.Lookup(names, phpVersions)
 	r := d.NewRunner()
+	ctx := d.Ctx
 
-	_ = r.Run("dpkg", "--configure", "-a")
+	if err := r.Run(ctx, "dpkg", "--configure", "-a"); err != nil {
+		fmt.Fprintf(d.Stdout, "  warning: dpkg --configure -a failed: %v\n", err)
+	}
 
 	iter := components
 	if op.reverse {
@@ -95,42 +99,42 @@ func RunStackOp(sf StackFlags, op stackOp, d Deps) error {
 			continue
 		}
 		if op.service {
-			if err := c.Verify(r); err != nil {
-				fmt.Printf("  %s: not installed, skipping\n", c.Name)
+			if err := c.Verify(ctx, r); err != nil {
+				fmt.Fprintf(d.Stdout, "  %s: not installed, skipping\n", c.Name)
 				continue
 			}
 		}
 		if op.validate && op.reverse {
-			if err := c.Verify(r); err != nil {
-				fmt.Printf("  %s: not installed, skipping\n", c.Name)
+			if err := c.Verify(ctx, r); err != nil {
+				fmt.Fprintf(d.Stdout, "  %s: not installed, skipping\n", c.Name)
 				continue
 			}
 		}
 		if op.validate && !op.reverse {
 			if c.VerifyFn != nil && !strings.HasPrefix(c.Name, "lsphp") {
-				if err := c.Verify(r); err == nil {
-					fmt.Printf("  %s: already installed, skipping\n", c.Name)
+				if err := c.Verify(ctx, r); err == nil {
+					fmt.Fprintf(d.Stdout, "  %s: already installed, skipping\n", c.Name)
 					continue
 				}
 			}
 		}
-		fmt.Printf("%s %s...\n", capitalize(op.name), c.Name)
-		if err := op.fn(c, r); err != nil {
+		fmt.Fprintf(d.Stdout, "%s %s...\n", capitalize(op.name), c.Name)
+		if err := op.fn(ctx, c, r); err != nil {
 			return err
 		}
 		if op.name == "upgrade" && c.StatusFn != nil {
-			if detail, err := c.Status(r); err == nil && detail != "" {
-				fmt.Printf("  %s: %s\n", c.Name, detail)
+			if detail, err := c.Status(ctx, r); err == nil && detail != "" {
+				fmt.Fprintf(d.Stdout, "  %s: %s\n", c.Name, detail)
 				continue
 			}
 		}
-		fmt.Printf("  %s: OK\n", c.Name)
+		fmt.Fprintf(d.Stdout, "  %s: OK\n", c.Name)
 	}
 	return nil
 }
 
 // RunStackPurge purges stack packages and configs, blocking if sites depend on them.
-func RunStackPurge(sf StackFlags, cfg CLIConfig, d Deps) error {
+func RunStackPurge(cfg CLIConfig, sf StackFlags, d Deps) error {
 	store, err := d.OpenStore(cfg.StateFile)
 	if err != nil {
 		return fmt.Errorf("open state: %w", err)
@@ -189,18 +193,19 @@ func RunStackMigrate(sf StackFlags, d Deps) error {
 	}
 
 	r := d.NewRunner()
+	ctx := d.Ctx
 	components := stack.Lookup(names, []string{"83"})
 
 	for _, c := range components {
 		if c.MigrateFn == nil {
-			fmt.Printf("  %s: migrate not supported, skipping\n", c.Name)
+			fmt.Fprintf(d.Stdout, "  %s: migrate not supported, skipping\n", c.Name)
 			continue
 		}
-		fmt.Printf("Migrating %s to %s...\n", c.Name, sf.Target)
-		if err := c.Migrate(r, sf.Target); err != nil {
+		fmt.Fprintf(d.Stdout, "Migrating %s to %s...\n", c.Name, sf.Target)
+		if err := c.Migrate(ctx, r, sf.Target); err != nil {
 			return err
 		}
-		fmt.Printf("  %s: migrated to %s\n", c.Name, sf.Target)
+		fmt.Fprintf(d.Stdout, "  %s: migrated to %s\n", c.Name, sf.Target)
 	}
 	return nil
 }
@@ -209,16 +214,17 @@ func RunStackMigrate(sf StackFlags, d Deps) error {
 func RunStackStatus(w io.Writer, d Deps) error {
 	components := stack.Registry(d.InstalledPHP())
 	r := d.NewRunner()
+	ctx := d.Ctx
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "COMPONENT\tSTATUS\tDETAIL")
 	for _, c := range components {
-		if err := c.Verify(r); err != nil {
+		if err := c.Verify(ctx, r); err != nil {
 			fmt.Fprintf(tw, "%s\tnot installed\t\n", c.Name)
 			continue
 		}
-		detail, _ := c.Status(r)
-		active, _ := c.Active(r)
+		detail, _ := c.Status(ctx, r)
+		active, _ := c.Active(ctx, r)
 		if c.HasService() {
 			if active {
 				fmt.Fprintf(tw, "%s\tactive\t%s\n", c.Name, detail)
@@ -329,6 +335,9 @@ func moveOLSBeforeLSPHP(cs []stack.Component) []stack.Component {
 	}
 	for i, c := range rest {
 		if strings.HasPrefix(c.Name, "lsphp") {
+			// rest[:i:i] uses a three-index slice with matching cap to
+			// prevent the subsequent append from mutating rest's backing
+			// array (which is still referenced via rest[i:]).
 			return append(rest[:i:i], append(ols, rest[i:]...)...)
 		}
 	}
@@ -339,5 +348,5 @@ func capitalize(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	return string(s[0]-32) + s[1:]
+	return strings.ToUpper(s[:1]) + s[1:]
 }
