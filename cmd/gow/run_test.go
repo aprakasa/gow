@@ -394,3 +394,31 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 		t.Error("expected cp object-cache.php drop-in call")
 	}
 }
+
+func TestRunStackPurge_BlockedBySites(t *testing.T) {
+	e := newTestEnv(t)
+	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+
+	err := runStackPurge(stackFlags{redis: true}, e.cfg)
+	if err == nil {
+		t.Fatal("expected purge to be blocked by dependent sites")
+	}
+	if !strings.Contains(err.Error(), "cannot purge redis") {
+		t.Errorf("error = %q, want 'cannot purge redis'", err.Error())
+	}
+	if !strings.Contains(err.Error(), "blog.test") {
+		t.Errorf("error = %q, want site name in error", err.Error())
+	}
+}
+
+func TestRunStackPurge_AllowedWhenNoSites(t *testing.T) {
+	e := newTestEnv(t)
+	// No sites created — purge should proceed (component not installed in test,
+	// but the dependency check should pass).
+	err := runStackPurge(stackFlags{redis: true}, e.cfg)
+	// Will fail because redis isn't installed in test env, but should NOT
+	// fail with "cannot purge" dependency error.
+	if err != nil && strings.Contains(err.Error(), "cannot purge") {
+		t.Fatalf("purge should not be blocked when no sites exist: %v", err)
+	}
+}

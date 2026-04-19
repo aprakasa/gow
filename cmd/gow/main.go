@@ -255,7 +255,7 @@ func main() {
 		Use:   "purge",
 		Short: "Purge stack packages and configs",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runStackOp(purgeFlags, stackOpPurge)
+			return runStackPurge(purgeFlags, cfg)
 		},
 	}
 	addStackFlags(stackPurgeCmd, &purgeFlags)
@@ -873,6 +873,54 @@ func runStackOp(sf stackFlags, op stackOp) error {
 		fmt.Printf("  %s: OK\n", c.Name)
 	}
 	return nil
+}
+
+func runStackPurge(sf stackFlags, cfg cliConfig) error {
+	store, err := state.Open(cfg.stateFile)
+	if err != nil {
+		return fmt.Errorf("open state: %w", err)
+	}
+	sites := store.Sites()
+
+	names, phpVersions := resolveStackFlags(sf)
+	if stackFlagsEmpty(sf) {
+		if detected := detectInstalledPHP(); len(detected) > 0 {
+			phpVersions = detected
+		}
+	}
+	components := stack.Lookup(names, phpVersions)
+
+	for _, c := range components {
+		deps := componentDependents(c.Name, sites)
+		if len(deps) > 0 {
+			return fmt.Errorf("cannot purge %s: %d site(s) depend on it (%s). Delete sites first: gow site delete <domain>",
+				c.Name, len(deps), strings.Join(deps, ", "))
+		}
+	}
+
+	return runStackOp(sf, stackOpPurge)
+}
+
+// componentDependents returns the names of sites that depend on a stack
+// component. Returns empty slice if the component can be safely purged.
+func componentDependents(componentName string, sites []state.Site) []string {
+	var dependents []string
+	for _, s := range sites {
+		switch {
+		case componentName == "ols":
+			dependents = append(dependents, s.Name)
+		case componentName == "mariadb" && s.Type != "html":
+			dependents = append(dependents, s.Name)
+		case componentName == "redis" && s.Type == "wp":
+			dependents = append(dependents, s.Name)
+		case strings.HasPrefix(componentName, "lsphp"):
+			ver := strings.TrimPrefix(componentName, "lsphp")
+			if s.PHPVersion == ver {
+				dependents = append(dependents, s.Name)
+			}
+		}
+	}
+	return dependents
 }
 
 func runStackMigrate(sf stackFlags) error {

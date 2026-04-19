@@ -73,6 +73,79 @@ func TestFormatPresets_ListsAll(t *testing.T) {
 	}
 }
 
+func TestComponentDependents_NoSites(t *testing.T) {
+	got := componentDependents("redis", nil)
+	if len(got) != 0 {
+		t.Errorf("expected no dependents, got %v", got)
+	}
+}
+
+func TestComponentDependents_OLS(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp", PHPVersion: "83"},
+		{Name: "b.test", Type: "html"},
+	}
+	got := componentDependents("ols", sites)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 dependents, got %v", got)
+	}
+}
+
+func TestComponentDependents_MariaDB(t *testing.T) {
+	sites := []state.Site{
+		{Name: "wp.test", Type: "wp"},
+		{Name: "php.test", Type: "php"},
+		{Name: "html.test", Type: "html"},
+	}
+	got := componentDependents("mariadb", sites)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 dependents (wp+php), got %v", got)
+	}
+}
+
+func TestComponentDependents_Redis(t *testing.T) {
+	sites := []state.Site{
+		{Name: "wp.test", Type: "wp"},
+		{Name: "php.test", Type: "php"},
+		{Name: "html.test", Type: "html"},
+	}
+	got := componentDependents("redis", sites)
+	if len(got) != 1 || got[0] != "wp.test" {
+		t.Fatalf("expected [wp.test], got %v", got)
+	}
+}
+
+func TestComponentDependents_LSPHP(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp", PHPVersion: "83"},
+		{Name: "b.test", Type: "wp", PHPVersion: "84"},
+	}
+	got := componentDependents("lsphp83", sites)
+	if len(got) != 1 || got[0] != "a.test" {
+		t.Fatalf("expected [a.test], got %v", got)
+	}
+}
+
+func TestComponentDependents_LSPHP_NoMatch(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp", PHPVersion: "84"},
+	}
+	got := componentDependents("lsphp83", sites)
+	if len(got) != 0 {
+		t.Errorf("expected no dependents, got %v", got)
+	}
+}
+
+func TestComponentDependents_UnknownComponent(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp"},
+	}
+	got := componentDependents("wpcli", sites)
+	if len(got) != 0 {
+		t.Errorf("expected no dependents for wpcli, got %v", got)
+	}
+}
+
 func TestFormatPresets_ShowsDescription(t *testing.T) {
 	var buf bytes.Buffer
 	if err := formatPresets(&buf); err != nil {
