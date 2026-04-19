@@ -1,7 +1,13 @@
 docRoot                   {{.WebRoot}}/htdocs
 vhDomain                  {{.Domain}}
 enableGzip                1
+{{if .SSLEnabled}}ssl {
+  certFile                 {{.CertPath}}
+  keyFile                  {{.KeyPath}}
+  certChain                1
+}
 
+{{end}}
 index  {
   useServer               0
   indexFiles              index.php, index.html
@@ -45,3 +51,18 @@ extprocessor lsphp-{{.Site}} {
   procHardLimit           {{mul .Children 2}}
   runOnStartUp            1
 }
+{{if .SSLEnabled}}
+context / {
+  location                $DOC_ROOT/
+  allowBrowse             1
+
+  rewrite  {
+    enable                1
+    rules                 <<<END
+RewriteCond %{SERVER_PORT} 80
+RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+RewriteRule (.*) https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+    END
+  }
+}
+{{end}}

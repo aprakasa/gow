@@ -394,3 +394,115 @@ func TestRenderVHostWP(t *testing.T) {
 		t.Error("wp template should block wp-config.php")
 	}
 }
+
+func TestRenderVHost_WPWithSSL(t *testing.T) {
+	data := VHostData{
+		Site:             "blog.test",
+		Domain:           "blog.test",
+		WebRoot:          "/var/www/blog.test",
+		LogDir:           "/var/log/lsws",
+		PHPVer:           "83",
+		Children:         4,
+		PHPMemoryLimitMB: 128,
+		MemSoftMB:        256,
+		MemHardMB:        512,
+		SSLEnabled:       true,
+		CertPath:         "/etc/letsencrypt/live/blog.test/fullchain.pem",
+		KeyPath:          "/etc/letsencrypt/live/blog.test/privkey.pem",
+	}
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() = %v", err)
+	}
+	if !strings.Contains(got, "ssl {") {
+		t.Error("missing ssl block")
+	}
+	if !strings.Contains(got, data.CertPath) {
+		t.Error("missing certFile path")
+	}
+	if !strings.Contains(got, data.KeyPath) {
+		t.Error("missing keyFile path")
+	}
+	if !strings.Contains(got, "certChain                1") {
+		t.Error("missing certChain 1")
+	}
+	if !strings.Contains(got, "SERVER_PORT") {
+		t.Error("missing HTTPS redirect rule")
+	}
+	if !strings.Contains(got, "acme-challenge") {
+		t.Error("missing ACME challenge exclusion in redirect")
+	}
+}
+
+func TestRenderVHost_WPNoSSL(t *testing.T) {
+	data := VHostData{
+		Site:             "blog.test",
+		Domain:           "blog.test",
+		WebRoot:          "/var/www/blog.test",
+		LogDir:           "/var/log/lsws",
+		PHPVer:           "83",
+		Children:         4,
+		PHPMemoryLimitMB: 128,
+		MemSoftMB:        256,
+		MemHardMB:        512,
+	}
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() = %v", err)
+	}
+	if strings.Contains(got, "ssl {") {
+		t.Error("should not contain ssl block when SSLEnabled is false")
+	}
+	if strings.Contains(got, "SERVER_PORT") {
+		t.Error("should not contain redirect when SSLEnabled is false")
+	}
+}
+
+func TestRenderVHost_HTMLWithSSL(t *testing.T) {
+	data := VHostData{
+		Site:       "static.test",
+		Domain:     "static.test",
+		WebRoot:    "/var/www/static.test",
+		LogDir:     "/var/log/lsws",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/static.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/static.test/privkey.pem",
+	}
+	got, err := RenderVHost("html", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() = %v", err)
+	}
+	if !strings.Contains(got, "ssl {") {
+		t.Error("missing ssl block")
+	}
+	if !strings.Contains(got, "SERVER_PORT") {
+		t.Error("missing HTTPS redirect")
+	}
+}
+
+func TestRenderVHost_PHPWithSSL(t *testing.T) {
+	data := VHostData{
+		Site:             "app.test",
+		Domain:           "app.test",
+		WebRoot:          "/var/www/app.test",
+		LogDir:           "/var/log/lsws",
+		PHPVer:           "83",
+		Children:         4,
+		PHPMemoryLimitMB: 128,
+		MemSoftMB:        256,
+		MemHardMB:        512,
+		SSLEnabled:       true,
+		CertPath:         "/etc/letsencrypt/live/app.test/fullchain.pem",
+		KeyPath:          "/etc/letsencrypt/live/app.test/privkey.pem",
+	}
+	got, err := RenderVHost("php", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() = %v", err)
+	}
+	if !strings.Contains(got, "ssl {") {
+		t.Error("missing ssl block")
+	}
+	if !strings.Contains(got, "SERVER_PORT") {
+		t.Error("missing HTTPS redirect")
+	}
+}

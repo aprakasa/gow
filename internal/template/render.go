@@ -40,6 +40,9 @@ type VHostData struct {
 	PHPMemoryLimitMB uint64
 	MemSoftMB        uint64
 	MemHardMB        uint64
+	SSLEnabled       bool
+	CertPath         string
+	KeyPath          string
 }
 
 // Renderer lazily parses embedded templates once and caches them for reuse.
