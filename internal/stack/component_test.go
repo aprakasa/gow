@@ -260,7 +260,7 @@ func TestRegistry_ReturnsAllComponents(t *testing.T) {
 	for i, c := range components {
 		names[i] = c.Name
 	}
-	for _, want := range []string{"ols", "lsphp81", "mariadb", "redis", "wpcli", "composer"} {
+	for _, want := range []string{"ols", "lsphp81", "mariadb", "redis", "wpcli", "composer", "certbot"} {
 		found := false
 		for _, n := range names {
 			if n == want {
@@ -289,8 +289,8 @@ func TestRegistry_MultiplePHPVersions(t *testing.T) {
 
 func TestLookup_FullRegistryWhenBothEmpty(t *testing.T) {
 	components := Lookup(nil, nil)
-	if len(components) != 5 {
-		t.Errorf("Lookup(nil, nil) returned %d components, want 5", len(components))
+	if len(components) != 6 {
+		t.Errorf("Lookup(nil, nil) returned %d components, want 6", len(components))
 	}
 }
 

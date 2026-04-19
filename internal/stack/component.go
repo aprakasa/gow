@@ -156,7 +156,7 @@ func Registry(phpVersions []string) []Component {
 	for _, v := range phpVersions {
 		components = append(components, LSPHP(v))
 	}
-	components = append(components, MariaDB(), Redis(), WPCLI(), Composer())
+	components = append(components, MariaDB(), Redis(), WPCLI(), Composer(), Certbot())
 	return components
 }
 
