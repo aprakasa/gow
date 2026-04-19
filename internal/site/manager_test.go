@@ -733,3 +733,109 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 		t.Error("httpd config should have restrained 1 after isolate")
 	}
 }
+
+// --- SSL ---
+
+func TestReconcile_SiteWithSSL(t *testing.T) {
+	m, dir := setupManager(t)
+	// Create docroot.
+	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
+	os.MkdirAll(docRoot, 0o755)
+
+	store := m.store
+	store.Add(state.Site{
+		Name:       "ssl.test",
+		Type:       "wp",
+		PHPVersion: "83",
+		Preset:     "standard",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
+	})
+
+	if err := m.Reconcile(); err != nil {
+		t.Fatalf("Reconcile() = %v", err)
+	}
+
+	// Verify SSL listener in httpd_config.conf.
+	httpdData, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf"))
+	httpdContent := string(httpdData)
+	if !strings.Contains(httpdContent, "listener SSL {") {
+		t.Error("missing SSL listener")
+	}
+	if !strings.Contains(httpdContent, "secure                   1") {
+		t.Error("missing secure 1")
+	}
+
+	// Verify SSL map entry.
+	if !strings.Contains(httpdContent, "map                      ssl.test ssl.test") {
+		t.Error("missing SSL map entry for ssl.test")
+	}
+
+	// Verify vhost config has ssl block.
+	vhostData, _ := os.ReadFile(filepath.Join(dir, "conf", "vhosts", "ssl.test", "vhconf.conf"))
+	vhostContent := string(vhostData)
+	if !strings.Contains(vhostContent, "ssl {") {
+		t.Error("missing ssl block in vhost config")
+	}
+	if !strings.Contains(vhostContent, "/etc/letsencrypt/live/ssl.test/fullchain.pem") {
+		t.Error("missing cert path in vhost config")
+	}
+	if !strings.Contains(vhostContent, "SERVER_PORT") {
+		t.Error("missing HTTPS redirect in vhost config")
+	}
+}
+
+func TestReconcile_HTMLSiteWithSSL(t *testing.T) {
+	m, dir := setupManager(t)
+	docRoot := filepath.Join(dir, "www", "static.test", "htdocs")
+	os.MkdirAll(docRoot, 0o755)
+
+	m.store.Add(state.Site{
+		Name:       "static.test",
+		Type:       "html",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/static.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/static.test/privkey.pem",
+	})
+
+	if err := m.Reconcile(); err != nil {
+		t.Fatalf("Reconcile() = %v", err)
+	}
+
+	vhostData, _ := os.ReadFile(filepath.Join(dir, "conf", "vhosts", "static.test", "vhconf.conf"))
+	vhostContent := string(vhostData)
+	if !strings.Contains(vhostContent, "ssl {") {
+		t.Error("missing ssl block for HTML site")
+	}
+}
+
+func TestDelete_SSLSite(t *testing.T) {
+	m, dir := setupManager(t)
+	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
+	os.MkdirAll(docRoot, 0o755)
+
+	m.store.Add(state.Site{
+		Name:       "ssl.test",
+		Type:       "html",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
+	})
+	m.Reconcile()
+
+	if err := m.Delete("ssl.test"); err != nil {
+		t.Fatalf("Delete() = %v", err)
+	}
+
+	httpdData, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf"))
+	httpdContent := string(httpdData)
+	// SSL map entry should be gone.
+	if strings.Contains(httpdContent, "ssl.test ssl.test") {
+		t.Error("SSL map entry should be removed after delete")
+	}
+	// SSL listener itself should still exist (other sites might use it).
+	if !strings.Contains(httpdContent, "listener SSL {") {
+		t.Error("SSL listener should remain for other sites")
+	}
+}

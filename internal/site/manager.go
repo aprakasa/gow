@@ -57,6 +57,17 @@ func (m *Manager) Reconcile() error {
 		return nil
 	}
 
+	// Ensure SSL listener if any site needs it.
+	for _, s := range sites {
+		if s.SSLEnabled {
+			httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
+			if err := ols.EnsureSSLListener(httpdConfPath); err != nil {
+				return fmt.Errorf("site: ensure SSL listener: %w", err)
+			}
+			break
+		}
+	}
+
 	// Build allocator inputs only for PHP-enabled sites.
 	inputs := make([]allocator.SiteInput, 0, len(sites))
 	siteIndex := make([]int, 0, len(sites)) // maps allocs index -> sites index
@@ -87,10 +98,13 @@ func (m *Manager) Reconcile() error {
 		}
 		siteRoot := filepath.Join(m.webRoot, s.Name)
 		data := template.VHostData{
-			Site:    s.Name,
-			Domain:  s.Name,
-			WebRoot: siteRoot,
-			LogDir:  "/var/log/lsws",
+			Site:       s.Name,
+			Domain:     s.Name,
+			WebRoot:    siteRoot,
+			LogDir:     "/var/log/lsws",
+			SSLEnabled: s.SSLEnabled,
+			CertPath:   s.CertPath,
+			KeyPath:    s.KeyPath,
 		}
 		var content string
 		var err error
@@ -110,6 +124,11 @@ func (m *Manager) Reconcile() error {
 		httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
 		if err := ols.RegisterVHost(httpdConfPath, s.Name, siteRoot, confFile); err != nil {
 			return fmt.Errorf("site: register vhost %s: %w", s.Name, err)
+		}
+		if s.SSLEnabled {
+			if err := ols.AddSSLMapEntry(httpdConfPath, s.Name); err != nil {
+				return fmt.Errorf("site: add SSL map %s: %w", s.Name, err)
+			}
 		}
 	}
 
@@ -137,6 +156,9 @@ func (m *Manager) Reconcile() error {
 				PHPMemoryLimitMB: a.PHPMemoryLimitMB,
 				MemSoftMB:        a.MemSoftMB,
 				MemHardMB:        a.MemHardMB,
+				SSLEnabled:       s.SSLEnabled,
+				CertPath:         s.CertPath,
+				KeyPath:          s.KeyPath,
 			}
 
 			var content string
@@ -158,6 +180,11 @@ func (m *Manager) Reconcile() error {
 			httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
 			if err := ols.RegisterVHost(httpdConfPath, a.Site, siteRoot, confFile); err != nil {
 				return fmt.Errorf("site: register vhost %s: %w", a.Site, err)
+			}
+			if s.SSLEnabled {
+				if err := ols.AddSSLMapEntry(httpdConfPath, a.Site); err != nil {
+					return fmt.Errorf("site: add SSL map %s: %w", a.Site, err)
+				}
 			}
 		}
 	}

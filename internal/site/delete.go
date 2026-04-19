@@ -25,6 +25,11 @@ func (m *Manager) Delete(name string) error {
 		return fmt.Errorf("site: delete %s: unregister vhost: %w", name, err)
 	}
 
+	// Remove SSL map entry if site had SSL.
+	if site.SSLEnabled {
+		_ = ols.RemoveSSLMapEntry(httpdConfPath, name)
+	}
+
 	if err := m.Reconcile(); err != nil {
 		return fmt.Errorf("site: delete %s: reconcile: %w", name, err)
 	}
