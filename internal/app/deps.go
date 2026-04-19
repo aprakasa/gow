@@ -5,6 +5,8 @@
 package app
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -59,6 +61,8 @@ type StackFlags struct {
 // Deps groups the side-effecting operations that app depends on.
 // Production code uses DefaultDeps; tests inject mocks via this struct.
 type Deps struct {
+	Ctx          context.Context
+	Stdout       io.Writer
 	DetectSpecs  func() (system.Specs, error)
 	LoadPolicy   func(string) (allocator.Policy, error)
 	OpenStore    func(string) (*state.Store, error)
@@ -72,7 +76,9 @@ type Deps struct {
 
 // DefaultDeps returns a Deps struct wired to production implementations.
 func DefaultDeps() Deps {
-	return Deps{
+	d := Deps{
+		Ctx:          context.Background(),
+		Stdout:       os.Stdout,
 		DetectSpecs:  system.Detect,
 		LoadPolicy:   allocator.LoadPolicyFromFile,
 		OpenStore:    state.Open,
@@ -80,9 +86,12 @@ func DefaultDeps() Deps {
 		NewRunner:    func() stack.Runner { return &stack.ShellRunner{} },
 		InstalledPHP: detectInstalledPHP,
 		PHPAvailable: phpVersionInstalled,
-		WPInstall:    installWordPress,
-		DBCleanup:    dropSiteDB,
 	}
+	d.DBCleanup = func(domain string) error { return dropSiteDB(d.Ctx, domain) }
+	d.WPInstall = func(domain, webRoot string) error {
+		return installWordPress(d.Stdout, d.Ctx, domain, webRoot)
+	}
+	return d
 }
 
 // detectInstalledPHP scans the OLS lsphp directory for installed LSPHP

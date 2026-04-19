@@ -1,6 +1,7 @@
 package site
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -103,6 +104,7 @@ func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
 // --- Reconcile ---
 
 func TestReconcile_NoSites(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
 	// Mock that fails if called — verifies Reconcile skips OLS with 0 sites.
@@ -110,12 +112,13 @@ func TestReconcile_NoSites(t *testing.T) {
 	ctrl := ols.NewController(testmock.WriteMock(t, "echo 'unexpected OLS call' >&2; exit 1"))
 	m.ols = ctrl
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 }
 
 func TestReconcile_SingleSite(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -128,7 +131,7 @@ func TestReconcile_SingleSite(t *testing.T) {
 
 	m := setupReconcileTest(t, store)
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -150,6 +153,7 @@ func TestReconcile_SingleSite(t *testing.T) {
 }
 
 func TestReconcile_MultipleSites(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -165,7 +169,7 @@ func TestReconcile_MultipleSites(t *testing.T) {
 
 	m := setupReconcileTest(t, store)
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -178,6 +182,7 @@ func TestReconcile_MultipleSites(t *testing.T) {
 }
 
 func TestReconcile_CallsValidateAndReload(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -206,7 +211,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -218,6 +223,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 }
 
 func TestReconcile_OLSValidateFails(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -231,13 +237,14 @@ func TestReconcile_OLSValidateFails(t *testing.T) {
 	m := setupReconcileTest(t, store)
 	m.ols = ols.NewController(testmock.WriteMock(t, "echo 'syntax error' >&2; exit 1"))
 
-	err = m.Reconcile()
+	err = m.Reconcile(ctx)
 	if err == nil {
 		t.Fatal("expected error when OLS validate fails")
 	}
 }
 
 func TestReconcile_InsufficientRAM(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -255,7 +262,7 @@ func TestReconcile_InsufficientRAM(t *testing.T) {
 	m := setupReconcileTest(t, store)
 	m.specs = system.Specs{TotalRAMMB: 512, CPUCores: 1}
 
-	err = m.Reconcile()
+	err = m.Reconcile(ctx)
 	if err == nil {
 		t.Fatal("expected error for insufficient RAM")
 	}
@@ -264,9 +271,10 @@ func TestReconcile_InsufficientRAM(t *testing.T) {
 // --- Create ---
 
 func TestCreate_AddsSiteAndReconciles(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -287,9 +295,10 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 }
 
 func TestCreate_RegistersVirtualHostInHttpdConfig(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -303,9 +312,10 @@ func TestCreate_RegistersVirtualHostInHttpdConfig(t *testing.T) {
 }
 
 func TestCreate_CreatesDocRoot(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -320,21 +330,23 @@ func TestCreate_CreatesDocRoot(t *testing.T) {
 }
 
 func TestCreate_DuplicateReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
-	err := m.Create("blog.test", "wp", "83", "standard", nil)
+	err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil)
 	if err == nil {
 		t.Fatal("duplicate Create should return error")
 	}
 }
 
 func TestCreate_InvalidPresetReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	err := m.Create("blog.test", "wp", "83", "nonexistent", nil)
+	err := m.Create(ctx,"blog.test", "wp", "83", "nonexistent", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -343,13 +355,14 @@ func TestCreate_InvalidPresetReturnsError(t *testing.T) {
 // --- Delete ---
 
 func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
 	// Create first, then delete.
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Delete("blog.test"); err != nil {
+	if err := m.Delete(ctx,"blog.test"); err != nil {
 		t.Fatalf("Delete() = %v", err)
 	}
 
@@ -360,12 +373,13 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 }
 
 func TestDelete_UnregistersVirtualHostFromHttpdConfig(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Delete("blog.test"); err != nil {
+	if err := m.Delete(ctx,"blog.test"); err != nil {
 		t.Fatalf("Delete() = %v", err)
 	}
 
@@ -379,18 +393,20 @@ func TestDelete_UnregistersVirtualHostFromHttpdConfig(t *testing.T) {
 }
 
 func TestDelete_NotFoundReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	err := m.Delete("nope.test")
+	err := m.Delete(ctx,"nope.test")
 	if err == nil {
 		t.Fatal("deleting nonexistent site should return error")
 	}
 }
 
 func TestDelete_RemovesSiteRoot(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -399,7 +415,7 @@ func TestDelete_RemovesSiteRoot(t *testing.T) {
 		t.Fatalf("site root should exist before delete")
 	}
 
-	if err := m.Delete("blog.test"); err != nil {
+	if err := m.Delete(ctx,"blog.test"); err != nil {
 		t.Fatalf("Delete() = %v", err)
 	}
 
@@ -411,11 +427,12 @@ func TestDelete_RemovesSiteRoot(t *testing.T) {
 // --- Update ---
 
 func TestUpdate_ChangesPHPVersion(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Update("blog.test", "82", "", nil, false); err != nil {
+	if err := m.Update(ctx,"blog.test", "82", "", nil, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
@@ -425,11 +442,12 @@ func TestUpdate_ChangesPHPVersion(t *testing.T) {
 }
 
 func TestUpdate_ChangesPreset(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("shop.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"shop.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Update("shop.test", "", "woocommerce", nil, false); err != nil {
+	if err := m.Update(ctx,"shop.test", "", "woocommerce", nil, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 	got, _ := m.store.Find("shop.test")
@@ -439,19 +457,21 @@ func TestUpdate_ChangesPreset(t *testing.T) {
 }
 
 func TestUpdate_NotFoundReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	err := m.Update("nope.test", "83", "standard", nil, false)
+	err := m.Update(ctx,"nope.test", "83", "standard", nil, false)
 	if err == nil {
 		t.Fatal("updating nonexistent site should return error")
 	}
 }
 
 func TestUpdate_InvalidPresetReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	err := m.Update("blog.test", "", "nonexistent", nil, false)
+	err := m.Update(ctx,"blog.test", "", "nonexistent", nil, false)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -462,14 +482,15 @@ func TestUpdate_InvalidPresetReturnsError(t *testing.T) {
 }
 
 func TestUpdate_ToCustomPreset(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	if err := m.Create("shop.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"shop.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
 	custom := &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 256}
-	if err := m.Update("shop.test", "", "custom", custom, false); err != nil {
+	if err := m.Update(ctx,"shop.test", "", "custom", custom, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 
@@ -486,14 +507,15 @@ func TestUpdate_ToCustomPreset(t *testing.T) {
 }
 
 func TestUpdate_FromCustomToNamed(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
-	if err := m.Create("blog.test", "wp", "83", "custom", custom); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "custom", custom); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
-	if err := m.Update("blog.test", "", "standard", nil, false); err != nil {
+	if err := m.Update(ctx,"blog.test", "", "standard", nil, false); err != nil {
 		t.Fatalf("Update() = %v", err)
 	}
 
@@ -509,10 +531,11 @@ func TestUpdate_FromCustomToNamed(t *testing.T) {
 // --- Custom preset ---
 
 func TestCreate_CustomPreset(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
-	if err := m.Create("custom.test", "wp", "83", "custom", custom); err != nil {
+	if err := m.Create(ctx,"custom.test", "wp", "83", "custom", custom); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -537,11 +560,12 @@ func TestCreate_CustomPreset(t *testing.T) {
 // --- Online / Offline ---
 
 func TestOffline_SetsMaintenanceAndReconciles(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Offline("blog.test"); err != nil {
+	if err := m.Offline(ctx,"blog.test"); err != nil {
 		t.Fatalf("Offline() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
@@ -551,14 +575,15 @@ func TestOffline_SetsMaintenanceAndReconciles(t *testing.T) {
 }
 
 func TestOnline_ClearsMaintenanceAndReconciles(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
-	if err := m.Offline("blog.test"); err != nil {
+	if err := m.Offline(ctx,"blog.test"); err != nil {
 		t.Fatalf("Offline() = %v", err)
 	}
-	if err := m.Online("blog.test"); err != nil {
+	if err := m.Online(ctx,"blog.test"); err != nil {
 		t.Fatalf("Online() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
@@ -568,16 +593,18 @@ func TestOnline_ClearsMaintenanceAndReconciles(t *testing.T) {
 }
 
 func TestOffline_NotFoundReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	err := m.Offline("nope.test")
+	err := m.Offline(ctx,"nope.test")
 	if err == nil {
 		t.Fatal("offlining nonexistent site should return error")
 	}
 }
 
 func TestOnline_NotFoundReturnsError(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	err := m.Online("nope.test")
+	err := m.Online(ctx,"nope.test")
 	if err == nil {
 		t.Fatal("onlining nonexistent site should return error")
 	}
@@ -586,6 +613,7 @@ func TestOnline_NotFoundReturnsError(t *testing.T) {
 // --- HTML site reconciliation ---
 
 func TestReconcile_HTMLSiteNoPHP(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -601,7 +629,7 @@ func TestReconcile_HTMLSiteNoPHP(t *testing.T) {
 	}
 
 	m := setupReconcileTest(t, store)
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -622,6 +650,7 @@ func TestReconcile_HTMLSiteNoPHP(t *testing.T) {
 // --- Maintenance mode ---
 
 func TestReconcile_MaintenanceMode(t *testing.T) {
+	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := state.Open(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -639,7 +668,7 @@ func TestReconcile_MaintenanceMode(t *testing.T) {
 	}
 
 	m := setupReconcileTest(t, store)
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -668,8 +697,9 @@ func TestReconcile_MaintenanceMode(t *testing.T) {
 // --- Create by type ---
 
 func TestCreate_HTMLSite(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("static.test", "html", "", "standard", nil); err != nil {
+	if err := m.Create(ctx,"static.test", "html", "", "standard", nil); err != nil {
 		t.Fatalf("Create(html) = %v", err)
 	}
 	got, _ := m.store.Find("static.test")
@@ -682,8 +712,9 @@ func TestCreate_HTMLSite(t *testing.T) {
 }
 
 func TestCreate_PHPSite(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("app.test", "php", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"app.test", "php", "83", "standard", nil); err != nil {
 		t.Fatalf("Create(php) = %v", err)
 	}
 	got, _ := m.store.Find("app.test")
@@ -693,8 +724,9 @@ func TestCreate_PHPSite(t *testing.T) {
 }
 
 func TestCreate_SetsUnixUser(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
@@ -704,9 +736,10 @@ func TestCreate_SetsUnixUser(t *testing.T) {
 }
 
 func TestUpdate_IsolateCreatesUser(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create("blog.test", "wp", "83", "standard", nil); err != nil {
+	if err := m.Create(ctx,"blog.test", "wp", "83", "standard", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -719,7 +752,7 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 	os.WriteFile(httpdConfPath, []byte(strings.ReplaceAll(string(data),
 		"restrained               1", "restrained               0")), 0o644)
 
-	if err := m.Update("blog.test", "", "", nil, true); err != nil {
+	if err := m.Update(ctx,"blog.test", "", "", nil, true); err != nil {
 		t.Fatalf("Update(isolate) = %v", err)
 	}
 
@@ -737,6 +770,7 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 // --- SSL ---
 
 func TestReconcile_SiteWithSSL(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 	// Create docroot.
 	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
@@ -753,7 +787,7 @@ func TestReconcile_SiteWithSSL(t *testing.T) {
 		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
 	})
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -787,6 +821,7 @@ func TestReconcile_SiteWithSSL(t *testing.T) {
 }
 
 func TestReconcile_HTMLSiteWithSSL(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 	docRoot := filepath.Join(dir, "www", "static.test", "htdocs")
 	os.MkdirAll(docRoot, 0o755)
@@ -799,7 +834,7 @@ func TestReconcile_HTMLSiteWithSSL(t *testing.T) {
 		KeyPath:    "/etc/letsencrypt/live/static.test/privkey.pem",
 	})
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
@@ -811,6 +846,7 @@ func TestReconcile_HTMLSiteWithSSL(t *testing.T) {
 }
 
 func TestDelete_SSLSite(t *testing.T) {
+	ctx := context.Background()
 	m, dir := setupManager(t)
 	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
 	os.MkdirAll(docRoot, 0o755)
@@ -822,9 +858,9 @@ func TestDelete_SSLSite(t *testing.T) {
 		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
 		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
 	})
-	m.Reconcile()
+	m.Reconcile(ctx)
 
-	if err := m.Delete("ssl.test"); err != nil {
+	if err := m.Delete(ctx,"ssl.test"); err != nil {
 		t.Fatalf("Delete() = %v", err)
 	}
 

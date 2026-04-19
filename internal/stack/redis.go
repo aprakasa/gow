@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -9,28 +10,28 @@ import (
 func Redis() Component {
 	return Component{
 		Name: "redis",
-		InstallFn: func(r Runner) error {
-			if err := r.Run("sh", "-c",
+		InstallFn: func(ctx context.Context, r Runner) error {
+			if err := r.Run(ctx, "sh", "-c",
 				"curl -fsSL https://packages.redis.io/gpg | gpg --yes --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg"); err != nil {
 				return fmt.Errorf("add gpg key: %w", err)
 			}
-			if err := r.Run("sh", "-c",
+			if err := r.Run(ctx, "sh", "-c",
 				"echo \"deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main\" > /etc/apt/sources.list.d/redis.list"); err != nil {
 				return fmt.Errorf("add apt source: %w", err)
 			}
-			if err := r.Run("apt-get", "update", "-y"); err != nil {
+			if err := r.Run(ctx, "apt-get", "update", "-y"); err != nil {
 				return fmt.Errorf("apt update: %w", err)
 			}
-			if err := r.Run("apt-get", "install", "-y", "redis"); err != nil {
+			if err := r.Run(ctx, "apt-get", "install", "-y", "redis"); err != nil {
 				return fmt.Errorf("install package: %w", err)
 			}
-			if err := r.Run("systemctl", "enable", "redis-server"); err != nil {
+			if err := r.Run(ctx, "systemctl", "enable", "redis-server"); err != nil {
 				return fmt.Errorf("enable service: %w", err)
 			}
-			if err := r.Run("systemctl", "start", "redis-server"); err != nil {
+			if err := r.Run(ctx, "systemctl", "start", "redis-server"); err != nil {
 				return fmt.Errorf("start service: %w", err)
 			}
-			out, err := r.Output("redis-cli", "ping")
+			out, err := r.Output(ctx, "redis-cli", "ping")
 			if err != nil {
 				return err
 			}
@@ -38,50 +39,50 @@ func Redis() Component {
 				return fmt.Errorf("redis ping returned %q, want PONG", out)
 			}
 			// Enable Unix socket for lower latency.
-			if err := r.Run("sh", "-c",
+			if err := r.Run(ctx, "sh", "-c",
 				"sed -i 's|^# \\?unixsocket .*|unixsocket /var/run/redis/redis.sock|;s|^# \\?unixsocketperm .*|unixsocketperm 770|' /etc/redis/redis.conf"); err != nil {
 				return fmt.Errorf("configure unix socket: %w", err)
 			}
-			if err := r.Run("usermod", "-aG", "redis", "nobody"); err != nil {
+			if err := r.Run(ctx, "usermod", "-aG", "redis", "nobody"); err != nil {
 				return fmt.Errorf("add nobody to redis group: %w", err)
 			}
-			return r.Run("systemctl", "restart", "redis-server")
+			return r.Run(ctx, "systemctl", "restart", "redis-server")
 		},
-		UpgradeFn: func(r Runner) error {
-			if err := r.Run("apt-get", "update", "-y"); err != nil {
+		UpgradeFn: func(ctx context.Context, r Runner) error {
+			if err := r.Run(ctx, "apt-get", "update", "-y"); err != nil {
 				return fmt.Errorf("update: %w", err)
 			}
-			return r.Run("apt-get", "upgrade", "-y", "redis-server")
+			return r.Run(ctx, "apt-get", "upgrade", "-y", "redis-server")
 		},
-		RemoveFn: func(r Runner) error {
-			return r.Run("apt-get", "remove", "-y", "redis-server", "redis-tools")
+		RemoveFn: func(ctx context.Context, r Runner) error {
+			return r.Run(ctx, "apt-get", "remove", "-y", "redis-server", "redis-tools")
 		},
-		PurgeFn: func(r Runner) error {
-			if err := r.Run("systemctl", "stop", "redis-server"); err != nil {
+		PurgeFn: func(ctx context.Context, r Runner) error {
+			if err := r.Run(ctx, "systemctl", "stop", "redis-server"); err != nil {
 				return fmt.Errorf("stop service: %w", err)
 			}
-			if err := r.Run("apt-get", "purge", "-y", "redis-server", "redis-tools"); err != nil {
+			if err := r.Run(ctx, "apt-get", "purge", "-y", "redis-server", "redis-tools"); err != nil {
 				return fmt.Errorf("purge package: %w", err)
 			}
-			if err := r.Run("rm", "-rf", "/var/lib/redis"); err != nil {
+			if err := r.Run(ctx, "rm", "-rf", "/var/lib/redis"); err != nil {
 				return fmt.Errorf("remove data dir: %w", err)
 			}
-			if err := r.Run("rm", "-rf", "/etc/redis"); err != nil {
+			if err := r.Run(ctx, "rm", "-rf", "/etc/redis"); err != nil {
 				return fmt.Errorf("remove config dir: %w", err)
 			}
-			if err := r.Run("rm", "-f", "/usr/share/keyrings/redis-archive-keyring.gpg"); err != nil {
+			if err := r.Run(ctx, "rm", "-f", "/usr/share/keyrings/redis-archive-keyring.gpg"); err != nil {
 				return fmt.Errorf("remove gpg key: %w", err)
 			}
-			if err := r.Run("rm", "-f", "/etc/apt/sources.list.d/redis.list"); err != nil {
+			if err := r.Run(ctx, "rm", "-f", "/etc/apt/sources.list.d/redis.list"); err != nil {
 				return fmt.Errorf("remove apt source: %w", err)
 			}
-			if err := r.Run("apt-get", "autoremove", "-y"); err != nil {
+			if err := r.Run(ctx, "apt-get", "autoremove", "-y"); err != nil {
 				return fmt.Errorf("autoremove: %w", err)
 			}
-			return r.Run("apt-get", "update", "-y")
+			return r.Run(ctx, "apt-get", "update", "-y")
 		},
-		VerifyFn: func(r Runner) error {
-			out, err := r.Output("dpkg-query", "-W", "-f", "${Status}", "redis-server")
+		VerifyFn: func(ctx context.Context, r Runner) error {
+			out, err := r.Output(ctx, "dpkg-query", "-W", "-f", "${Status}", "redis-server")
 			if err != nil {
 				return err
 			}
@@ -90,28 +91,28 @@ func Redis() Component {
 			}
 			return nil
 		},
-		StatusFn: func(r Runner) (string, error) {
-			out, err := r.Output("redis-server", "--version")
+		StatusFn: func(ctx context.Context, r Runner) (string, error) {
+			out, err := r.Output(ctx, "redis-server", "--version")
 			if err != nil {
 				return "", err
 			}
-			_ = r.Run("test", "-S", "/var/run/redis/redis.sock")
+			_ = r.Run(ctx, "test", "-S", "/var/run/redis/redis.sock")
 			return strings.TrimSpace(out), nil
 		},
-		StartFn: func(r Runner) error {
-			return r.Run("systemctl", "start", "redis-server")
+		StartFn: func(ctx context.Context, r Runner) error {
+			return r.Run(ctx, "systemctl", "start", "redis-server")
 		},
-		StopFn: func(r Runner) error {
-			return r.Run("systemctl", "stop", "redis-server")
+		StopFn: func(ctx context.Context, r Runner) error {
+			return r.Run(ctx, "systemctl", "stop", "redis-server")
 		},
-		RestartFn: func(r Runner) error {
-			return r.Run("systemctl", "restart", "redis-server")
+		RestartFn: func(ctx context.Context, r Runner) error {
+			return r.Run(ctx, "systemctl", "restart", "redis-server")
 		},
-		ReloadFn: func(r Runner) error {
-			return r.Run("systemctl", "restart", "redis-server")
+		ReloadFn: func(ctx context.Context, r Runner) error {
+			return r.Run(ctx, "systemctl", "restart", "redis-server")
 		},
-		ActiveFn: func(r Runner) error {
-			out, err := r.Output("redis-cli", "-s", "/var/run/redis/redis.sock", "ping")
+		ActiveFn: func(ctx context.Context, r Runner) error {
+			out, err := r.Output(ctx, "redis-cli", "-s", "/var/run/redis/redis.sock", "ping")
 			if err != nil {
 				return err
 			}

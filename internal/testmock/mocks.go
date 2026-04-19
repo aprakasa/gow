@@ -3,6 +3,7 @@
 package testmock
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,10 +15,12 @@ import (
 type NoopRunner struct{}
 
 // Run discards the command and returns nil.
-func (NoopRunner) Run(string, ...string) error { return nil }
+func (NoopRunner) Run(_ context.Context, _ string, _ ...string) error { return nil }
 
 // Output discards the command and returns an empty string.
-func (NoopRunner) Output(string, ...string) (string, error) { return "", nil }
+func (NoopRunner) Output(_ context.Context, _ string, _ ...string) (string, error) {
+	return "", nil
+}
 
 // WriteMock creates a temporary executable shell script that runs body and
 // returns its path.

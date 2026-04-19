@@ -1,6 +1,7 @@
 package site
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,12 +20,12 @@ type recordingRunner struct {
 	commands [][]string
 }
 
-func (r *recordingRunner) Run(name string, args ...string) error {
+func (r *recordingRunner) Run(_ context.Context, name string, args ...string) error {
 	r.commands = append(r.commands, append([]string{name}, args...))
 	return nil
 }
 
-func (r *recordingRunner) Output(name string, args ...string) (string, error) {
+func (r *recordingRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	return "", nil
 }
 
@@ -56,6 +57,7 @@ func setupManagerWithRunner(t *testing.T, runner stack.Runner) (*Manager, string
 }
 
 func TestEnableSSL_Success(t *testing.T) {
+	ctx := context.Background()
 	rr := &recordingRunner{}
 	m, dir := setupManagerWithRunner(t, rr)
 	os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755)
@@ -67,7 +69,7 @@ func TestEnableSSL_Success(t *testing.T) {
 		Preset:     "standard",
 	})
 
-	if err := m.EnableSSL("ssl.test", "admin@ssl.test", false); err != nil {
+	if err := m.EnableSSL(ctx, "ssl.test", "admin@ssl.test", false); err != nil {
 		t.Fatalf("EnableSSL() = %v", err)
 	}
 
@@ -105,13 +107,14 @@ func TestEnableSSL_Success(t *testing.T) {
 }
 
 func TestEnableSSL_Staging(t *testing.T) {
+	ctx := context.Background()
 	rr := &recordingRunner{}
 	m, dir := setupManagerWithRunner(t, rr)
 	os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755)
 
 	m.store.Add(state.Site{Name: "ssl.test", Type: "wp", PHPVersion: "83", Preset: "standard"})
 
-	if err := m.EnableSSL("ssl.test", "admin@ssl.test", true); err != nil {
+	if err := m.EnableSSL(ctx, "ssl.test", "admin@ssl.test", true); err != nil {
 		t.Fatalf("EnableSSL() = %v", err)
 	}
 
@@ -131,9 +134,10 @@ func TestEnableSSL_Staging(t *testing.T) {
 }
 
 func TestEnableSSL_SiteNotFound(t *testing.T) {
+	ctx := context.Background()
 	m, _ := setupManagerWithRunner(t, &recordingRunner{})
 
-	err := m.EnableSSL("nope.test", "admin@test.com", false)
+	err := m.EnableSSL(ctx, "nope.test", "admin@test.com", false)
 	if err == nil {
 		t.Fatal("expected error for nonexistent site")
 	}

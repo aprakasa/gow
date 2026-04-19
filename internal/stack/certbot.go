@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -9,32 +10,32 @@ import (
 func Certbot() Component {
 	return Component{
 		Name: "certbot",
-		InstallFn: func(r Runner) error {
-			if err := r.Run("apt-get", "install", "-y", "certbot"); err != nil {
+		InstallFn: func(ctx context.Context, r Runner) error {
+			if err := r.Run(ctx, "apt-get", "install", "-y", "certbot"); err != nil {
 				return fmt.Errorf("install package: %w", err)
 			}
 			// Deploy hook: reload OLS after cert renewal.
 			hookDir := "/etc/letsencrypt/renewal-hooks/deploy"
-			if err := r.Run("mkdir", "-p", hookDir); err != nil {
+			if err := r.Run(ctx, "mkdir", "-p", hookDir); err != nil {
 				return fmt.Errorf("create hook dir: %w", err)
 			}
-			if err := r.Run("sh", "-c",
+			if err := r.Run(ctx, "sh", "-c",
 				"printf '#!/bin/bash\\nsystemctl reload lsws\\n' > "+hookDir+"/reload-lsws.sh"); err != nil {
 				return fmt.Errorf("write deploy hook: %w", err)
 			}
-			return r.Run("chmod", "+x", hookDir+"/reload-lsws.sh")
+			return r.Run(ctx, "chmod", "+x", hookDir+"/reload-lsws.sh")
 		},
-		RemoveFn: func(r Runner) error {
-			return r.Run("apt-get", "remove", "-y", "certbot")
+		RemoveFn: func(ctx context.Context, r Runner) error {
+			return r.Run(ctx, "apt-get", "remove", "-y", "certbot")
 		},
-		PurgeFn: func(r Runner) error {
-			if err := r.Run("apt-get", "purge", "-y", "certbot"); err != nil {
+		PurgeFn: func(ctx context.Context, r Runner) error {
+			if err := r.Run(ctx, "apt-get", "purge", "-y", "certbot"); err != nil {
 				return err
 			}
-			return r.Run("rm", "-rf", "/etc/letsencrypt")
+			return r.Run(ctx, "rm", "-rf", "/etc/letsencrypt")
 		},
-		VerifyFn: func(r Runner) error {
-			out, err := r.Output("dpkg-query", "-W", "-f", "${Status}", "certbot")
+		VerifyFn: func(ctx context.Context, r Runner) error {
+			out, err := r.Output(ctx, "dpkg-query", "-W", "-f", "${Status}", "certbot")
 			if err != nil {
 				return err
 			}
@@ -43,8 +44,8 @@ func Certbot() Component {
 			}
 			return nil
 		},
-		StatusFn: func(r Runner) (string, error) {
-			out, err := r.Output("certbot", "--version")
+		StatusFn: func(ctx context.Context, r Runner) (string, error) {
+			out, err := r.Output(ctx, "certbot", "--version")
 			if err != nil {
 				return "", err
 			}

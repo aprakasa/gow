@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -20,15 +21,17 @@ type call struct {
 	args []string
 }
 
-func (m *mockRunner) Run(name string, args ...string) error {
+func (m *mockRunner) Run(_ context.Context, name string, args ...string) error {
 	m.runCalls = append(m.runCalls, call{name, args})
 	return m.runErr
 }
 
-func (m *mockRunner) Output(name string, args ...string) (string, error) {
+func (m *mockRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	m.outputCalls = append(m.outputCalls, call{name, args})
 	return m.outVal, m.outErr
 }
+
+var ctx = context.Background()
 
 // --- Component delegation ---
 
@@ -36,12 +39,12 @@ func TestComponent_Install_DelegatesToInstallFn(t *testing.T) {
 	called := false
 	c := Component{
 		Name: "test",
-		InstallFn: func(Runner) error {
+		InstallFn: func(_ context.Context, _ Runner) error {
 			called = true
 			return nil
 		},
 	}
-	if err := c.Install(&mockRunner{}); err != nil {
+	if err := c.Install(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 	if !called {
@@ -52,11 +55,11 @@ func TestComponent_Install_DelegatesToInstallFn(t *testing.T) {
 func TestComponent_Install_WrapsError(t *testing.T) {
 	c := Component{
 		Name: "ols",
-		InstallFn: func(Runner) error {
+		InstallFn: func(_ context.Context, _ Runner) error {
 			return errors.New("repo failed")
 		},
 	}
-	err := c.Install(&mockRunner{})
+	err := c.Install(ctx, &mockRunner{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -70,7 +73,7 @@ func TestComponent_Install_WrapsError(t *testing.T) {
 
 func TestComponent_Install_NilIsNoop(t *testing.T) {
 	c := Component{Name: "test"}
-	if err := c.Install(&mockRunner{}); err != nil {
+	if err := c.Install(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Install() with nil InstallFn = %v", err)
 	}
 }
@@ -79,12 +82,12 @@ func TestComponent_Purge_DelegatesToPurgeFn(t *testing.T) {
 	called := false
 	c := Component{
 		Name: "test",
-		PurgeFn: func(Runner) error {
+		PurgeFn: func(_ context.Context, _ Runner) error {
 			called = true
 			return nil
 		},
 	}
-	if err := c.Purge(&mockRunner{}); err != nil {
+	if err := c.Purge(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Purge() = %v", err)
 	}
 	if !called {
@@ -95,11 +98,11 @@ func TestComponent_Purge_DelegatesToPurgeFn(t *testing.T) {
 func TestComponent_Purge_WrapsError(t *testing.T) {
 	c := Component{
 		Name: "redis",
-		PurgeFn: func(Runner) error {
+		PurgeFn: func(_ context.Context, _ Runner) error {
 			return errors.New("purge failed")
 		},
 	}
-	err := c.Purge(&mockRunner{})
+	err := c.Purge(ctx, &mockRunner{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -110,7 +113,7 @@ func TestComponent_Purge_WrapsError(t *testing.T) {
 
 func TestComponent_Purge_NilIsNoop(t *testing.T) {
 	c := Component{Name: "test"}
-	if err := c.Purge(&mockRunner{}); err != nil {
+	if err := c.Purge(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Purge() with nil PurgeFn = %v", err)
 	}
 }
@@ -119,12 +122,12 @@ func TestComponent_Upgrade_DelegatesToUpgradeFn(t *testing.T) {
 	called := false
 	c := Component{
 		Name: "test",
-		UpgradeFn: func(Runner) error {
+		UpgradeFn: func(_ context.Context, _ Runner) error {
 			called = true
 			return nil
 		},
 	}
-	if err := c.Upgrade(&mockRunner{}); err != nil {
+	if err := c.Upgrade(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Upgrade() = %v", err)
 	}
 	if !called {
@@ -134,7 +137,7 @@ func TestComponent_Upgrade_DelegatesToUpgradeFn(t *testing.T) {
 
 func TestComponent_Upgrade_NilIsNoop(t *testing.T) {
 	c := Component{Name: "test"}
-	if err := c.Upgrade(&mockRunner{}); err != nil {
+	if err := c.Upgrade(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Upgrade() with nil UpgradeFn = %v", err)
 	}
 }
@@ -143,12 +146,12 @@ func TestComponent_Remove_DelegatesToRemoveFn(t *testing.T) {
 	called := false
 	c := Component{
 		Name: "test",
-		RemoveFn: func(Runner) error {
+		RemoveFn: func(_ context.Context, _ Runner) error {
 			called = true
 			return nil
 		},
 	}
-	if err := c.Remove(&mockRunner{}); err != nil {
+	if err := c.Remove(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Remove() = %v", err)
 	}
 	if !called {
@@ -158,7 +161,7 @@ func TestComponent_Remove_DelegatesToRemoveFn(t *testing.T) {
 
 func TestComponent_Remove_NilIsNoop(t *testing.T) {
 	c := Component{Name: "test"}
-	if err := c.Remove(&mockRunner{}); err != nil {
+	if err := c.Remove(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Remove() with nil RemoveFn = %v", err)
 	}
 }
@@ -167,12 +170,12 @@ func TestComponent_Verify_DelegatesToVerifyFn(t *testing.T) {
 	called := false
 	c := Component{
 		Name: "test",
-		VerifyFn: func(Runner) error {
+		VerifyFn: func(_ context.Context, _ Runner) error {
 			called = true
 			return nil
 		},
 	}
-	if err := c.Verify(&mockRunner{}); err != nil {
+	if err := c.Verify(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Verify() = %v", err)
 	}
 	if !called {
@@ -182,28 +185,28 @@ func TestComponent_Verify_DelegatesToVerifyFn(t *testing.T) {
 
 func TestComponent_Start_NilIsNoop(t *testing.T) {
 	c := Component{Name: "wpcli"}
-	if err := c.Start(&mockRunner{}); err != nil {
+	if err := c.Start(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Start() with nil StartFn = %v", err)
 	}
 }
 
 func TestComponent_Stop_NilIsNoop(t *testing.T) {
 	c := Component{Name: "wpcli"}
-	if err := c.Stop(&mockRunner{}); err != nil {
+	if err := c.Stop(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Stop() with nil StopFn = %v", err)
 	}
 }
 
 func TestComponent_Restart_NilIsNoop(t *testing.T) {
 	c := Component{Name: "wpcli"}
-	if err := c.Restart(&mockRunner{}); err != nil {
+	if err := c.Restart(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Restart() with nil RestartFn = %v", err)
 	}
 }
 
 func TestComponent_Reload_NilIsNoop(t *testing.T) {
 	c := Component{Name: "wpcli"}
-	if err := c.Reload(&mockRunner{}); err != nil {
+	if err := c.Reload(ctx, &mockRunner{}); err != nil {
 		t.Fatalf("Reload() with nil ReloadFn = %v", err)
 	}
 }
@@ -211,11 +214,11 @@ func TestComponent_Reload_NilIsNoop(t *testing.T) {
 func TestComponent_Start_WrapsError(t *testing.T) {
 	c := Component{
 		Name: "ols",
-		StartFn: func(Runner) error {
+		StartFn: func(_ context.Context, _ Runner) error {
 			return errors.New("already running")
 		},
 	}
-	err := c.Start(&mockRunner{})
+	err := c.Start(ctx, &mockRunner{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -226,7 +229,7 @@ func TestComponent_Start_WrapsError(t *testing.T) {
 
 func TestComponent_Migrate_NilReturnsError(t *testing.T) {
 	c := Component{Name: "redis"}
-	err := c.Migrate(&mockRunner{}, "11.8")
+	err := c.Migrate(ctx, &mockRunner{}, "11.8")
 	if err == nil {
 		t.Fatal("expected error for component without MigrateFn")
 	}
@@ -239,12 +242,12 @@ func TestComponent_Migrate_DelegatesToMigrateFn(t *testing.T) {
 	var gotTarget string
 	c := Component{
 		Name: "mariadb",
-		MigrateFn: func(r Runner, target string) error {
+		MigrateFn: func(_ context.Context, _ Runner, target string) error {
 			gotTarget = target
 			return nil
 		},
 	}
-	if err := c.Migrate(&mockRunner{}, "11.8"); err != nil {
+	if err := c.Migrate(ctx, &mockRunner{}, "11.8"); err != nil {
 		t.Fatalf("Migrate() = %v", err)
 	}
 	if gotTarget != "11.8" {

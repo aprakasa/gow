@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestOLS_Install_CallsRepoSetupAndAptInstall(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -52,7 +53,7 @@ func TestOLS_Install_StartsService(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -72,7 +73,7 @@ func TestOLS_Install_VerifiesStatus(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -91,7 +92,7 @@ func TestOLS_Install_RepoSetupFails(t *testing.T) {
 	mr := &mockRunner{runErr: errGeneric}
 
 	c := OLS()
-	err := c.Install(mr)
+	err := c.Install(ctx, mr)
 	if err == nil {
 		t.Fatal("expected error when repo setup fails")
 	}
@@ -103,7 +104,7 @@ type aptFailRunner struct {
 	calls []call
 }
 
-func (r *aptFailRunner) Run(name string, args ...string) error {
+func (r *aptFailRunner) Run(_ context.Context, name string, args ...string) error {
 	r.calls = append(r.calls, call{name, args})
 	if name == "apt-get" && len(args) > 0 && args[0] == "install" {
 		return errGeneric
@@ -111,7 +112,7 @@ func (r *aptFailRunner) Run(name string, args ...string) error {
 	return nil
 }
 
-func (r *aptFailRunner) Output(name string, args ...string) (string, error) {
+func (r *aptFailRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	r.calls = append(r.calls, call{name, args})
 	return "", nil
 }
@@ -120,7 +121,7 @@ func TestOLS_Install_RecoversFromPostinstFailure(t *testing.T) {
 	r := &aptFailRunner{}
 
 	c := OLS()
-	if err := c.Install(r); err != nil {
+	if err := c.Install(ctx, r); err != nil {
 		t.Fatalf("Install() = %v, expected recovery from postinst failure", err)
 	}
 
@@ -140,7 +141,7 @@ func TestOLS_Purge_DeepCleans(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Purge(mr); err != nil {
+	if err := c.Purge(ctx, mr); err != nil {
 		t.Fatalf("Purge() = %v", err)
 	}
 
@@ -184,7 +185,7 @@ func TestOLS_Start(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Start(mr); err != nil {
+	if err := c.Start(ctx, mr); err != nil {
 		t.Fatalf("Start() = %v", err)
 	}
 
@@ -204,7 +205,7 @@ func TestOLS_Stop(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Stop(mr); err != nil {
+	if err := c.Stop(ctx, mr); err != nil {
 		t.Fatalf("Stop() = %v", err)
 	}
 
@@ -224,7 +225,7 @@ func TestOLS_Restart(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Restart(mr); err != nil {
+	if err := c.Restart(ctx, mr); err != nil {
 		t.Fatalf("Restart() = %v", err)
 	}
 
@@ -244,7 +245,7 @@ func TestOLS_Reload(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Reload(mr); err != nil {
+	if err := c.Reload(ctx, mr); err != nil {
 		t.Fatalf("Reload() = %v", err)
 	}
 
@@ -264,7 +265,7 @@ func TestOLS_Upgrade(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Upgrade(mr); err != nil {
+	if err := c.Upgrade(ctx, mr); err != nil {
 		t.Fatalf("Upgrade() = %v", err)
 	}
 
@@ -290,7 +291,7 @@ func TestOLS_Remove(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := OLS()
-	if err := c.Remove(mr); err != nil {
+	if err := c.Remove(ctx, mr); err != nil {
 		t.Fatalf("Remove() = %v", err)
 	}
 
@@ -312,12 +313,12 @@ type loggingRunner struct {
 	calls *[]call
 }
 
-func (l *loggingRunner) Run(name string, args ...string) error {
+func (l *loggingRunner) Run(_ context.Context, name string, args ...string) error {
 	*l.calls = append(*l.calls, call{name, args})
 	return nil
 }
 
-func (l *loggingRunner) Output(name string, args ...string) (string, error) {
+func (l *loggingRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	*l.calls = append(*l.calls, call{name, args})
 	if strings.Contains(name, "redis-cli") {
 		return "PONG\n", nil

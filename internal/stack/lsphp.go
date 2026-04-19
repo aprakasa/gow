@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -31,8 +32,8 @@ func lsphpBinPath(ver string) string {
 // ensurePHPInPath ensures a CLI PHP binary with mysqli is available for tools
 // like WP-CLI and Composer. LSPHP uses the litespeed SAPI which these tools
 // reject, so we install the system php-cli package instead.
-func ensurePHPInPath(r Runner) {
-	_ = r.Run("apt-get", "install", "-y", "php-cli", "php-mysql")
+func ensurePHPInPath(ctx context.Context, r Runner) {
+	_ = r.Run(ctx, "apt-get", "install", "-y", "php-cli", "php-mysql")
 }
 
 // LSPHP returns the LSPHP stack component for the given PHP version.
@@ -42,38 +43,38 @@ func LSPHP(phpVer string) Component {
 
 	return Component{
 		Name: "lsphp" + phpVer,
-		InstallFn: func(r Runner) error {
+		InstallFn: func(ctx context.Context, r Runner) error {
 			args := append([]string{"install", "-y"}, pkgs...)
-			if err := r.Run("apt-get", args...); err != nil {
+			if err := r.Run(ctx, "apt-get", args...); err != nil {
 				return fmt.Errorf("install packages: %w", err)
 			}
-			_, err := r.Output(binPath, "-v")
+			_, err := r.Output(ctx, binPath, "-v")
 			return err
 		},
-		UpgradeFn: func(r Runner) error {
-			if err := r.Run("apt-get", "update", "-y"); err != nil {
+		UpgradeFn: func(ctx context.Context, r Runner) error {
+			if err := r.Run(ctx, "apt-get", "update", "-y"); err != nil {
 				return fmt.Errorf("update: %w", err)
 			}
 			args := append([]string{"upgrade", "-y"}, pkgs...)
-			return r.Run("apt-get", args...)
+			return r.Run(ctx, "apt-get", args...)
 		},
-		RemoveFn: func(r Runner) error {
+		RemoveFn: func(ctx context.Context, r Runner) error {
 			args := append([]string{"remove", "-y"}, pkgs...)
-			return r.Run("apt-get", args...)
+			return r.Run(ctx, "apt-get", args...)
 		},
-		PurgeFn: func(r Runner) error {
+		PurgeFn: func(ctx context.Context, r Runner) error {
 			args := append([]string{"purge", "-y"}, pkgs...)
-			if err := r.Run("apt-get", args...); err != nil {
+			if err := r.Run(ctx, "apt-get", args...); err != nil {
 				return fmt.Errorf("purge packages: %w", err)
 			}
-			return r.Run("apt-get", "autoremove", "-y")
+			return r.Run(ctx, "apt-get", "autoremove", "-y")
 		},
-		VerifyFn: func(r Runner) error {
-			_, err := r.Output(binPath, "-v")
+		VerifyFn: func(ctx context.Context, r Runner) error {
+			_, err := r.Output(ctx, binPath, "-v")
 			return err
 		},
-		StatusFn: func(r Runner) (string, error) {
-			out, err := r.Output(binPath, "-v")
+		StatusFn: func(ctx context.Context, r Runner) (string, error) {
+			out, err := r.Output(ctx, binPath, "-v")
 			if err != nil {
 				return "", err
 			}

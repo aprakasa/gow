@@ -9,7 +9,7 @@ func TestMariaDB_Install_AddsRepoInstallsEnablesStarts(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestMariaDB_Install_StartFails(t *testing.T) {
 	mr := &mockRunner{runErr: errGeneric}
 
 	c := MariaDB()
-	err := c.Install(mr)
+	err := c.Install(ctx, mr)
 	if err == nil {
 		t.Fatal("expected error when install fails")
 	}
@@ -66,7 +66,7 @@ func TestMariaDB_Purge_DeepCleans(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Purge(mr); err != nil {
+	if err := c.Purge(ctx, mr); err != nil {
 		t.Fatalf("Purge() = %v", err)
 	}
 
@@ -122,7 +122,7 @@ func TestMariaDB_Verify_ChecksPackageInstalled(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Verify(mr); err != nil {
+	if err := c.Verify(ctx, mr); err != nil {
 		t.Fatalf("Verify() = %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestMariaDB_Start(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Start(mr); err != nil {
+	if err := c.Start(ctx, mr); err != nil {
 		t.Fatalf("Start() = %v", err)
 	}
 
@@ -162,7 +162,7 @@ func TestMariaDB_Stop(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Stop(mr); err != nil {
+	if err := c.Stop(ctx, mr); err != nil {
 		t.Fatalf("Stop() = %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestMariaDB_Restart(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Restart(mr); err != nil {
+	if err := c.Restart(ctx, mr); err != nil {
 		t.Fatalf("Restart() = %v", err)
 	}
 
@@ -202,7 +202,7 @@ func TestMariaDB_Reload(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Reload(mr); err != nil {
+	if err := c.Reload(ctx, mr); err != nil {
 		t.Fatalf("Reload() = %v", err)
 	}
 
@@ -222,7 +222,7 @@ func TestMariaDB_Upgrade(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Upgrade(mr); err != nil {
+	if err := c.Upgrade(ctx, mr); err != nil {
 		t.Fatalf("Upgrade() = %v", err)
 	}
 
@@ -242,7 +242,7 @@ func TestMariaDB_Remove(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Remove(mr); err != nil {
+	if err := c.Remove(ctx, mr); err != nil {
 		t.Fatalf("Remove() = %v", err)
 	}
 
@@ -262,7 +262,7 @@ func TestMariaDB_Migrate(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := MariaDB()
-	if err := c.Migrate(mr, "11.8"); err != nil {
+	if err := c.Migrate(ctx, mr, "11.8"); err != nil {
 		t.Fatalf("Migrate() = %v", err)
 	}
 

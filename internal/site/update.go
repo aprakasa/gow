@@ -1,6 +1,7 @@
 package site
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -14,7 +15,7 @@ import (
 // "no change". It validates the new preset before mutating state.
 // When isolate is true, it creates the system user, chowns the site directory,
 // adds the user to the redis group, and updates restrained in the httpd config.
-func (m *Manager) Update(name, phpVersion, preset string, custom *state.CustomPreset, isolate bool) error {
+func (m *Manager) Update(ctx context.Context, name, phpVersion, preset string, custom *state.CustomPreset, isolate bool) error {
 	if preset != "" && preset != "custom" {
 		if _, err := allocator.LookupPreset(preset); err != nil {
 			return fmt.Errorf("site: update %s: %w", name, err)
@@ -44,8 +45,8 @@ func (m *Manager) Update(name, phpVersion, preset string, custom *state.CustomPr
 	// Create system user and chown if isolating.
 	if isolate {
 		s, _ := m.store.Find(name)
-		if !m.userExists(s.UnixUser) {
-			if err := m.runner.Run("useradd", "--system", "--no-create-home",
+		if !m.userExists(ctx, s.UnixUser) {
+			if err := m.runner.Run(ctx, "useradd", "--system", "--no-create-home",
 				"--shell", "/usr/sbin/nologin", s.UnixUser); err != nil {
 				// Roll back the UnixUser we just set in the store.
 				m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
@@ -53,13 +54,13 @@ func (m *Manager) Update(name, phpVersion, preset string, custom *state.CustomPr
 			}
 		}
 		siteRoot := filepath.Join(m.webRoot, name)
-		if err := m.runner.Run("chown", "-R", s.UnixUser+":"+s.UnixUser, siteRoot); err != nil {
-			_ = m.runner.Run("userdel", s.UnixUser)
+		if err := m.runner.Run(ctx, "chown", "-R", s.UnixUser+":"+s.UnixUser, siteRoot); err != nil {
+			_ = m.runner.Run(context.Background(), "userdel", s.UnixUser)
 			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: chown: %w", name, err)
 		}
-		if err := m.runner.Run("usermod", "-aG", "redis", s.UnixUser); err != nil {
-			_ = m.runner.Run("userdel", s.UnixUser)
+		if err := m.runner.Run(ctx, "usermod", "-aG", "redis", s.UnixUser); err != nil {
+			_ = m.runner.Run(context.Background(), "userdel", s.UnixUser)
 			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: add to redis group: %w", name, err)
 		}
@@ -71,7 +72,7 @@ func (m *Manager) Update(name, phpVersion, preset string, custom *state.CustomPr
 		}
 	}
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		return fmt.Errorf("site: update %s: reconcile: %w", name, err)
 	}
 

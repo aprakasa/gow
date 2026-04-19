@@ -1,6 +1,7 @@
 package site
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 // Delete removes a site from the state store, unregisters its virtualHost from
 // httpd_config.conf, and runs Reconcile to update the OLS configuration. It
 // returns an error if the site does not exist.
-func (m *Manager) Delete(name string) error {
+func (m *Manager) Delete(ctx context.Context, name string) error {
 	// Save UnixUser before removing from store.
 	site, _ := m.store.Find(name)
 
@@ -30,13 +31,13 @@ func (m *Manager) Delete(name string) error {
 		_ = ols.RemoveSSLMapEntry(httpdConfPath, name)
 	}
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		return fmt.Errorf("site: delete %s: reconcile: %w", name, err)
 	}
 
 	// Remove the dedicated system user.
 	if site.UnixUser != "" {
-		_ = m.runner.Run("userdel", site.UnixUser)
+		_ = m.runner.Run(ctx, "userdel", site.UnixUser)
 	}
 
 	siteRoot := filepath.Join(m.webRoot, name)

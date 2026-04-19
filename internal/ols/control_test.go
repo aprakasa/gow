@@ -1,6 +1,7 @@
 package ols
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,14 +15,14 @@ import (
 
 func TestValidate_AlwaysReturnsNil(t *testing.T) {
 	c := NewController(testmock.WriteMock(t, "exit 1")) // even a failing binary should return nil
-	if err := c.Validate(); err != nil {
+	if err := c.Validate(context.Background()); err != nil {
 		t.Fatalf("Validate() = %v, want nil (no-op)", err)
 	}
 }
 
 func TestValidate_NoBinaryRequired(t *testing.T) {
 	c := NewController("/no/such/binary")
-	if err := c.Validate(); err != nil {
+	if err := c.Validate(context.Background()); err != nil {
 		t.Fatalf("Validate() = %v, want nil (no-op)", err)
 	}
 }
@@ -30,14 +31,14 @@ func TestValidate_NoBinaryRequired(t *testing.T) {
 
 func TestGracefulReload_Success(t *testing.T) {
 	c := NewController(testmock.WriteMock(t, "exit 0"))
-	if err := c.GracefulReload(); err != nil {
+	if err := c.GracefulReload(context.Background()); err != nil {
 		t.Fatalf("GracefulReload() = %v", err)
 	}
 }
 
 func TestGracefulReload_Failure(t *testing.T) {
 	c := NewController(testmock.WriteMock(t, "exit 1"))
-	err := c.GracefulReload()
+	err := c.GracefulReload(context.Background())
 	if err == nil {
 		t.Fatal("expected error on non-zero exit")
 	}
@@ -49,7 +50,7 @@ func TestGracefulReload_Failure(t *testing.T) {
 func TestGracefulReload_PassesRestartSubcommand(t *testing.T) {
 	dir := t.TempDir()
 	c := NewController(testmock.WriteArgMock(t, dir))
-	if err := c.GracefulReload(); err != nil {
+	if err := c.GracefulReload(context.Background()); err != nil {
 		t.Fatalf("GracefulReload() = %v", err)
 	}
 

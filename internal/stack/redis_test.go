@@ -10,7 +10,7 @@ func TestRedis_Install_AddsKeySourceAndInstalls(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -83,7 +83,7 @@ func TestRedis_Install_PingReturnsPong(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -102,7 +102,7 @@ func TestRedis_Install_Fails(t *testing.T) {
 	mr := &mockRunner{runErr: errGeneric}
 
 	c := Redis()
-	err := c.Install(mr)
+	err := c.Install(ctx, mr)
 	if err == nil {
 		t.Fatal("expected error when install fails")
 	}
@@ -113,7 +113,7 @@ func TestRedis_Purge_DeepCleans(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Purge(mr); err != nil {
+	if err := c.Purge(ctx, mr); err != nil {
 		t.Fatalf("Purge() = %v", err)
 	}
 
@@ -165,7 +165,7 @@ func TestRedis_Start(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Start(mr); err != nil {
+	if err := c.Start(ctx, mr); err != nil {
 		t.Fatalf("Start() = %v", err)
 	}
 
@@ -185,7 +185,7 @@ func TestRedis_Stop(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Stop(mr); err != nil {
+	if err := c.Stop(ctx, mr); err != nil {
 		t.Fatalf("Stop() = %v", err)
 	}
 
@@ -205,7 +205,7 @@ func TestRedis_Restart(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Restart(mr); err != nil {
+	if err := c.Restart(ctx, mr); err != nil {
 		t.Fatalf("Restart() = %v", err)
 	}
 
@@ -225,7 +225,7 @@ func TestRedis_Reload(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Reload(mr); err != nil {
+	if err := c.Reload(ctx, mr); err != nil {
 		t.Fatalf("Reload() = %v", err)
 	}
 
@@ -245,7 +245,7 @@ func TestRedis_Upgrade(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Upgrade(mr); err != nil {
+	if err := c.Upgrade(ctx, mr); err != nil {
 		t.Fatalf("Upgrade() = %v", err)
 	}
 
@@ -265,7 +265,7 @@ func TestRedis_Remove(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if err := c.Remove(mr); err != nil {
+	if err := c.Remove(ctx, mr); err != nil {
 		t.Fatalf("Remove() = %v", err)
 	}
 
@@ -285,7 +285,7 @@ func TestRedis_Active_UsesSocketPath(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if _, err := c.Active(mr); err != nil {
+	if _, err := c.Active(ctx, mr); err != nil {
 		t.Fatalf("Active() = %v", err)
 	}
 
@@ -305,7 +305,7 @@ func TestRedis_Status_ChecksSocket(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := Redis()
-	if _, err := c.Status(mr); err != nil {
+	if _, err := c.Status(ctx, mr); err != nil {
 		t.Fatalf("Status() = %v", err)
 	}
 

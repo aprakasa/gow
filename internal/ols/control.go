@@ -1,8 +1,7 @@
-// Package ols wraps OpenLiteSpeed control operations (config validation,
-// graceful reload) behind testable interfaces.
 package ols
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -18,8 +17,8 @@ var (
 
 // Controller abstracts OpenLiteSpeed control operations for testability.
 type Controller interface {
-	Validate() error
-	GracefulReload() error
+	Validate(ctx context.Context) error
+	GracefulReload(ctx context.Context) error
 }
 
 var _ Controller = (*LSControl)(nil)
@@ -36,13 +35,13 @@ func NewController(binPath string) *LSControl {
 
 // Validate is a no-op because OpenLiteSpeed has no config-test subcommand
 // (unlike nginx -t). Bad configs are caught by GracefulReload instead.
-func (c *LSControl) Validate() error {
+func (c *LSControl) Validate(ctx context.Context) error {
 	return nil
 }
 
 // GracefulReload restarts OLS to pick up config changes.
-func (c *LSControl) GracefulReload() error {
-	cmd := exec.Command(c.binPath, "restart") //nolint:gosec // binPath set by CLI, not user input
+func (c *LSControl) GracefulReload(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, c.binPath, "restart") //nolint:gosec // binPath set by CLI, not user input
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrReloadFailed, out)

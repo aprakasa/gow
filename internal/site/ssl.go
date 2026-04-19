@@ -1,6 +1,7 @@
 package site
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -11,7 +12,7 @@ import (
 // certbot's webroot plugin. If staging is true the Let's Encrypt staging
 // server is used (--test-cert). On success the site state is updated with
 // the certificate paths and OLS is reconciled.
-func (m *Manager) EnableSSL(name, email string, staging bool) error {
+func (m *Manager) EnableSSL(ctx context.Context, name, email string, staging bool) error {
 	if _, ok := m.store.Find(name); !ok {
 		return fmt.Errorf("site: ssl %s: not found", name)
 	}
@@ -29,7 +30,7 @@ func (m *Manager) EnableSSL(name, email string, staging bool) error {
 		args = append(args, "--test-cert")
 	}
 
-	if err := m.runner.Run("certbot", args...); err != nil {
+	if err := m.runner.Run(ctx, "certbot", args...); err != nil {
 		return fmt.Errorf("site: ssl %s: certbot: %w", name, err)
 	}
 
@@ -37,7 +38,7 @@ func (m *Manager) EnableSSL(name, email string, staging bool) error {
 	keyPath := "/etc/letsencrypt/live/" + name + "/privkey.pem"
 
 	for _, p := range []string{certPath, keyPath} {
-		if err := m.runner.Run("test", "-f", p); err != nil {
+		if err := m.runner.Run(ctx, "test", "-f", p); err != nil {
 			return fmt.Errorf("site: ssl %s: cert file not found: %s: %w", name, p, err)
 		}
 	}
@@ -50,7 +51,7 @@ func (m *Manager) EnableSSL(name, email string, staging bool) error {
 		return fmt.Errorf("site: ssl %s: update state: %w", name, err)
 	}
 
-	if err := m.Reconcile(); err != nil {
+	if err := m.Reconcile(ctx); err != nil {
 		return fmt.Errorf("site: ssl %s: reconcile: %w", name, err)
 	}
 

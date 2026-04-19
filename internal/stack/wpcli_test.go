@@ -9,7 +9,7 @@ func TestWPCLI_Install(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := WPCLI()
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -35,7 +35,7 @@ func TestWPCLI_Upgrade(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := WPCLI()
-	if err := c.Upgrade(mr); err != nil {
+	if err := c.Upgrade(ctx, mr); err != nil {
 		t.Fatalf("Upgrade() = %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestWPCLI_Remove(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := WPCLI()
-	if err := c.Remove(mr); err != nil {
+	if err := c.Remove(ctx, mr); err != nil {
 		t.Fatalf("Remove() = %v", err)
 	}
 
@@ -75,7 +75,7 @@ func TestWPCLI_Purge(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := WPCLI()
-	if err := c.Purge(mr); err != nil {
+	if err := c.Purge(ctx, mr); err != nil {
 		t.Fatalf("Purge() = %v", err)
 	}
 
@@ -95,7 +95,7 @@ func TestWPCLI_Verify(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := WPCLI()
-	if err := c.Verify(mr); err != nil {
+	if err := c.Verify(ctx, mr); err != nil {
 		t.Fatalf("Verify() = %v", err)
 	}
 

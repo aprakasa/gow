@@ -17,7 +17,7 @@ func TestLSPHP_Install_InstallsAllPackages(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := LSPHP("84")
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -42,7 +42,7 @@ func TestLSPHP_Install_VersionParametrized(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := LSPHP("83")
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -63,7 +63,7 @@ func TestLSPHP_Install_VerifiesPhpVersion(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := LSPHP("84")
-	if err := c.Install(mr); err != nil {
+	if err := c.Install(ctx, mr); err != nil {
 		t.Fatalf("Install() = %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestLSPHP_Install_Fails(t *testing.T) {
 	mr := &mockRunner{runErr: errGeneric}
 
 	c := LSPHP("84")
-	err := c.Install(mr)
+	err := c.Install(ctx, mr)
 	if err == nil {
 		t.Fatal("expected error when install fails")
 	}
@@ -93,7 +93,7 @@ func TestLSPHP_Purge_PurgesAllPackages(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := LSPHP("84")
-	if err := c.Purge(mr); err != nil {
+	if err := c.Purge(ctx, mr); err != nil {
 		t.Fatalf("Purge() = %v", err)
 	}
 
@@ -116,7 +116,7 @@ func TestLSPHP_Upgrade(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := LSPHP("83")
-	if err := c.Upgrade(mr); err != nil {
+	if err := c.Upgrade(ctx, mr); err != nil {
 		t.Fatalf("Upgrade() = %v", err)
 	}
 
@@ -136,7 +136,7 @@ func TestLSPHP_Remove(t *testing.T) {
 	mr := &loggingRunner{calls: &calls}
 
 	c := LSPHP("84")
-	if err := c.Remove(mr); err != nil {
+	if err := c.Remove(ctx, mr); err != nil {
 		t.Fatalf("Remove() = %v", err)
 	}
 

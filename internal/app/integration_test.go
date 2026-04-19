@@ -2,8 +2,10 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,8 +23,8 @@ var errTestDetect = errors.New("detect failed")
 
 type stubController struct{}
 
-func (stubController) Validate() error       { return nil }
-func (stubController) GracefulReload() error { return nil }
+func (stubController) Validate(context.Context) error       { return nil }
+func (stubController) GracefulReload(context.Context) error { return nil }
 
 type testEnv struct {
 	deps Deps
@@ -51,6 +53,8 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	return &testEnv{
 		deps: Deps{
+			Ctx:    context.Background(),
+			Stdout: io.Discard,
 			DetectSpecs: func() (system.Specs, error) {
 				return system.Specs{TotalRAMMB: 8192, CPUCores: 4}, nil
 			},
@@ -321,7 +325,7 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 	r := &cmdLoggingRunner{}
 	docRoot := "/var/www/example.com/htdocs"
 
-	if err := configureObjectCache(r, docRoot); err != nil {
+	if err := configureObjectCache(context.Background(), r, docRoot); err != nil {
 		t.Fatalf("configureObjectCache() = %v", err)
 	}
 
@@ -378,7 +382,7 @@ func TestRunStackPurge_BlockedBySites(t *testing.T) {
 	e := newTestEnv(t)
 	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
 
-	err := RunStackPurge(StackFlags{Redis: true}, e.cfg, e.deps)
+	err := RunStackPurge(e.cfg, StackFlags{Redis: true}, e.deps)
 	if err == nil {
 		t.Fatal("expected purge to be blocked by dependent sites")
 	}
@@ -392,7 +396,7 @@ func TestRunStackPurge_BlockedBySites(t *testing.T) {
 
 func TestRunStackPurge_AllowedWhenNoSites(t *testing.T) {
 	e := newTestEnv(t)
-	err := RunStackPurge(StackFlags{Redis: true}, e.cfg, e.deps)
+	err := RunStackPurge(e.cfg, StackFlags{Redis: true}, e.deps)
 	if err != nil && strings.Contains(err.Error(), "cannot purge") {
 		t.Fatalf("purge should not be blocked when no sites exist: %v", err)
 	}
@@ -409,12 +413,12 @@ type cmdLoggingRunner struct {
 	calls []cmdCall
 }
 
-func (r *cmdLoggingRunner) Run(name string, args ...string) error {
+func (r *cmdLoggingRunner) Run(_ context.Context, name string, args ...string) error {
 	r.calls = append(r.calls, cmdCall{name, args})
 	return nil
 }
 
-func (r *cmdLoggingRunner) Output(name string, args ...string) (string, error) {
+func (r *cmdLoggingRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	r.calls = append(r.calls, cmdCall{name, args})
 	return "", nil
 }
