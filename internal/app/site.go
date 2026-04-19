@@ -1,14 +1,25 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/site"
 	"github.com/aprakasa/gow/internal/state"
 )
+
+// isTerminal reports whether f is attached to a terminal (not a pipe or file).
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
 
 // NewManager constructs a site.Manager using the injected dependencies.
 func NewManager(cfg CLIConfig, d Deps) (*site.Manager, error) {
@@ -33,6 +44,9 @@ func NewManager(cfg CLIConfig, d Deps) (*site.Manager, error) {
 
 // RunCreate creates a new site.
 func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	preset, custom, err := resolveTuneFlags(sf)
 	if err != nil {
 		return err
@@ -44,10 +58,10 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 		if err != nil {
 			return err
 		}
-		if err := m.Create(domain, sf.SiteType, "", "standard", nil); err != nil {
+		if err := m.Create(d.Ctx, domain, sf.SiteType, "", "standard", nil); err != nil {
 			return err
 		}
-		fmt.Printf("Site %s created.\n", domain)
+		fmt.Fprintf(d.Stdout, "Site %s created.\n", domain)
 		return nil
 	}
 
@@ -68,7 +82,7 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
-	if err := m.Create(domain, sf.SiteType, phpVer, preset, custom); err != nil {
+	if err := m.Create(d.Ctx, domain, sf.SiteType, phpVer, preset, custom); err != nil {
 		return err
 	}
 	if sf.SiteType == "wp" {
@@ -76,13 +90,16 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 			return err
 		}
 	} else {
-		fmt.Printf("Site %s created.\n", domain)
+		fmt.Fprintf(d.Stdout, "Site %s created.\n", domain)
 	}
 	return nil
 }
 
 // RunUpdate updates a site's PHP version or tuning.
 func RunUpdate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	preset, custom, err := resolveTuneFlags(sf)
 	if err != nil {
 		return err
@@ -99,15 +116,18 @@ func RunUpdate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
-	if err := m.Update(domain, sf.PHP, preset, custom, sf.Isolate); err != nil {
+	if err := m.Update(d.Ctx, domain, sf.PHP, preset, custom, sf.Isolate); err != nil {
 		return err
 	}
-	fmt.Printf("Site %s updated.\n", domain)
+	fmt.Fprintf(d.Stdout, "Site %s updated.\n", domain)
 	return nil
 }
 
 // RunInfo shows details for a site.
 func RunInfo(cfg CLIConfig, sf SiteFlags, domain string, w io.Writer, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	store, err := d.OpenStore(cfg.StateFile)
 	if err != nil {
 		return err
@@ -192,32 +212,41 @@ func RunInfo(cfg CLIConfig, sf SiteFlags, domain string, w io.Writer, d Deps) er
 
 // RunOnline brings a site online.
 func RunOnline(cfg CLIConfig, domain string, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	m, err := NewManager(cfg, d)
 	if err != nil {
 		return err
 	}
-	if err := m.Online(domain); err != nil {
+	if err := m.Online(d.Ctx, domain); err != nil {
 		return err
 	}
-	fmt.Printf("Site %s is now online.\n", domain)
+	fmt.Fprintf(d.Stdout, "Site %s is now online.\n", domain)
 	return nil
 }
 
 // RunOffline puts a site into maintenance mode.
 func RunOffline(cfg CLIConfig, domain string, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	m, err := NewManager(cfg, d)
 	if err != nil {
 		return err
 	}
-	if err := m.Offline(domain); err != nil {
+	if err := m.Offline(d.Ctx, domain); err != nil {
 		return err
 	}
-	fmt.Printf("Site %s is now offline (maintenance mode).\n", domain)
+	fmt.Fprintf(d.Stdout, "Site %s is now offline (maintenance mode).\n", domain)
 	return nil
 }
 
 // RunDelete deletes a site.
 func RunDelete(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	store, err := d.OpenStore(cfg.StateFile)
 	if err != nil {
 		return err
@@ -227,13 +256,18 @@ func RunDelete(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	}
 
 	if !sf.NoPrompt {
-		fmt.Printf("This will permanently delete:\n")
-		fmt.Printf("  - OLS virtual host configuration\n")
-		fmt.Printf("  - Site state from gow registry\n")
-		fmt.Printf("  - %s/%s/ (including uploads, themes, plugins)\n", cfg.WebRoot, domain)
-		fmt.Printf("\nAre you sure? [y/N]: ")
+		if !isTerminal(os.Stdin) {
+			return fmt.Errorf("refusing to delete %q on non-interactive stdin; re-run with --no-prompt to confirm", domain)
+		}
+		fmt.Fprintf(d.Stdout, "This will permanently delete:\n")
+		fmt.Fprintf(d.Stdout, "  - OLS virtual host configuration\n")
+		fmt.Fprintf(d.Stdout, "  - Site state from gow registry\n")
+		fmt.Fprintf(d.Stdout, "  - %s/%s/ (including uploads, themes, plugins)\n", cfg.WebRoot, domain)
+		fmt.Fprintf(d.Stdout, "\nAre you sure? [y/N]: ")
 		var resp string
-		fmt.Scanln(&resp)
+		if _, err := fmt.Scanln(&resp); err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("read confirmation: %w", err)
+		}
 		if resp != "y" && resp != "Y" {
 			return fmt.Errorf("aborted")
 		}
@@ -250,30 +284,33 @@ func RunDelete(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 		sType = "wp"
 	}
 
-	if err := m.Delete(domain); err != nil {
+	if err := m.Delete(d.Ctx, domain); err != nil {
 		return err
 	}
 
 	// Clean up database for WP/PHP sites.
 	if sType != "html" {
 		if err := d.DBCleanup(domain); err != nil {
-			fmt.Printf("  warning: database cleanup failed: %v\n", err)
+			fmt.Fprintf(d.Stdout, "  warning: database cleanup failed: %v\n", err)
 		}
 	}
-	fmt.Printf("Site %s deleted.\n", domain)
+	fmt.Fprintf(d.Stdout, "Site %s deleted.\n", domain)
 	return nil
 }
 
 // RunSSL enables SSL for a site.
 func RunSSL(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
+	if err := ValidateDomain(domain); err != nil {
+		return err
+	}
 	m, err := NewManager(cfg, d)
 	if err != nil {
 		return err
 	}
-	if err := m.EnableSSL(domain, sf.SSLEmail, sf.SSLStaging); err != nil {
+	if err := m.EnableSSL(d.Ctx, domain, sf.SSLEmail, sf.SSLStaging); err != nil {
 		return err
 	}
-	fmt.Printf("SSL enabled for %s.\n", domain)
+	fmt.Fprintf(d.Stdout, "SSL enabled for %s.\n", domain)
 	return nil
 }
 
@@ -298,7 +335,7 @@ func RunReconcile(cfg CLIConfig, d Deps) error {
 	if err != nil {
 		return err
 	}
-	return m.Reconcile()
+	return m.Reconcile(d.Ctx)
 }
 
 // RunStatus shows current allocations and resource headroom.

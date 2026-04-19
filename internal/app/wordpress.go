@@ -1,8 +1,11 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"path/filepath"
 	"strings"
@@ -10,14 +13,22 @@ import (
 	"github.com/aprakasa/gow/internal/stack"
 )
 
-func dropSiteDB(domain string) error {
+func dropSiteDB(ctx context.Context, domain string) error {
 	dbName := dbNameFromDomain(domain)
+	qDB, err := quoteDBIdentifier(dbName)
+	if err != nil {
+		return err
+	}
+	qUser, err := quoteDBIdentifier(dbName)
+	if err != nil {
+		return err
+	}
 	r := stack.NewShellRunner()
 	sql := fmt.Sprintf(
-		"DROP DATABASE IF EXISTS `%s`; DROP USER IF EXISTS `%s`@'localhost'; FLUSH PRIVILEGES;",
-		dbName, dbName,
+		"DROP DATABASE IF EXISTS %s; DROP USER IF EXISTS %s@'localhost'; FLUSH PRIVILEGES;",
+		qDB, qUser,
 	)
-	return r.Run("mariadb", "-e", sql)
+	return r.Run(ctx, "mariadb", "-e", sql)
 }
 
 const passwordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -35,10 +46,14 @@ func dbNameFromDomain(domain string) string {
 	return "wp_" + strings.ReplaceAll(domain, ".", "_")
 }
 
-func promptDefault(label, def string) string {
-	fmt.Printf("  %s [%s]: ", label, def)
+func promptDefault(w io.Writer, label, def string) string {
+	fmt.Fprintf(w, "  %s [%s]: ", label, def)
 	var input string
-	fmt.Scanln(&input)
+	if _, err := fmt.Scanln(&input); err != nil && !errors.Is(err, io.EOF) {
+		// On unexpected read error, fall through to default rather than
+		// fail the install — the caller already chose interactive mode.
+		return def
+	}
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return def
@@ -46,43 +61,48 @@ func promptDefault(label, def string) string {
 	return input
 }
 
-func installWordPress(domain, webRoot string) error {
+func installWordPress(w io.Writer, ctx context.Context, domain, webRoot string) error {
 	docRoot := filepath.Join(webRoot, domain, "htdocs")
 	r := stack.NewShellRunner()
 
 	// Prompt for WP admin credentials.
-	fmt.Println("\n  WordPress setup:")
-	adminUser := promptDefault("Admin username", "admin")
-	adminEmail := promptDefault("Admin email", "admin@"+domain)
-	adminPass := promptDefault("Admin password", "auto-generated")
+	fmt.Fprintln(w, "\n  WordPress setup:")
+	adminUser := promptDefault(w, "Admin username", "admin")
+	adminEmail := promptDefault(w, "Admin email", "admin@"+domain)
+	adminPass := promptDefault(w, "Admin password", "auto-generated")
 	if adminPass == "auto-generated" {
 		adminPass = generatePassword(16)
 	}
 
 	// Download WordPress.
-	fmt.Print("  Downloading WordPress...")
-	if err := r.Run(stack.WPCLIBinPath, "core", "download", "--path="+docRoot, "--allow-root"); err != nil {
+	fmt.Fprint(w, "  Downloading WordPress...")
+	if err := r.Run(ctx, stack.WPCLIBinPath, "core", "download", "--path="+docRoot, "--allow-root"); err != nil {
 		return fmt.Errorf("wp core download: %w", err)
 	}
-	fmt.Println(" OK")
-
-	// Create database and dedicated user.
+	fmt.Fprintln(w, " OK")
 	dbName := dbNameFromDomain(domain)
 	dbUser := dbName
 	dbPass := generatePassword(20)
+	qDB, err := quoteDBIdentifier(dbName)
+	if err != nil {
+		return err
+	}
+	qUser, err := quoteDBIdentifier(dbUser)
+	if err != nil {
+		return err
+	}
+	qPass := sqlEscapeString(dbPass)
 
-	fmt.Print("  Creating database...")
+	fmt.Fprint(w, "  Creating database...")
 	sql := fmt.Sprintf(
-		"CREATE DATABASE IF NOT EXISTS `%s`; CREATE USER IF NOT EXISTS `%s`@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON `%s`.* TO `%s`@'localhost'; FLUSH PRIVILEGES;",
-		dbName, dbUser, dbPass, dbName, dbUser,
+		"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS %s@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO %s@'localhost'; FLUSH PRIVILEGES;",
+		qDB, qUser, qPass, qDB, qUser,
 	)
-	if err := r.Run("mariadb", "-e", sql); err != nil {
+	if err := r.Run(ctx, "mariadb", "-e", sql); err != nil {
 		return fmt.Errorf("create database: %w", err)
 	}
-	fmt.Println(" OK")
-
-	// Generate wp-config.php.
-	if err := r.Run(stack.WPCLIBinPath, "config", "create",
+	fmt.Fprintln(w, " OK")
+	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "create",
 		"--dbname="+dbName, "--dbuser="+dbUser, "--dbpass="+dbPass,
 		"--allow-root", "--path="+docRoot,
 	); err != nil {
@@ -90,8 +110,8 @@ func installWordPress(domain, webRoot string) error {
 	}
 
 	// Install WordPress.
-	fmt.Print("  Installing WordPress...")
-	if err := r.Run(stack.WPCLIBinPath, "core", "install",
+	fmt.Fprint(w, "  Installing WordPress...")
+	if err := r.Run(ctx, stack.WPCLIBinPath, "core", "install",
 		"--url="+domain, "--title="+domain,
 		"--admin_user="+adminUser, "--admin_password="+adminPass,
 		"--admin_email="+adminEmail,
@@ -99,34 +119,30 @@ func installWordPress(domain, webRoot string) error {
 	); err != nil {
 		return fmt.Errorf("wp core install: %w", err)
 	}
-	fmt.Println(" OK")
-
-	// Install and activate LiteSpeed Cache.
-	fmt.Print("  Installing LiteSpeed Cache...")
-	if err := r.Run(stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",
+	fmt.Fprintln(w, " OK")
+	fmt.Fprint(w, "  Installing LiteSpeed Cache...")
+	if err := r.Run(ctx, stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",
 		"--activate", "--allow-root", "--path="+docRoot,
 	); err != nil {
 		return fmt.Errorf("install lscache: %w", err)
 	}
-	fmt.Println(" OK")
-
-	// Configure LSCache object cache (Redis via Unix socket).
-	fmt.Print("  Configuring object cache...")
-	if err := configureObjectCache(r, docRoot); err != nil {
+	fmt.Fprintln(w, " OK")
+	fmt.Fprint(w, "  Configuring object cache...")
+	if err := configureObjectCache(ctx, r, docRoot); err != nil {
 		return err
 	}
-	fmt.Println(" OK")
+	fmt.Fprintln(w, " OK")
 
-	fmt.Printf("\n  URL:      http://%s\n", domain)
-	fmt.Printf("  Username: %s\n", adminUser)
-	fmt.Printf("  Password: %s\n", adminPass)
+	fmt.Fprintf(w, "\n  URL:      http://%s\n", domain)
+	fmt.Fprintf(w, "  Username: %s\n", adminUser)
+	fmt.Fprintf(w, "  Password: %s\n", adminPass)
 
 	return nil
 }
 
 // configureObjectCache sets up LSCache to use Redis via Unix socket as object
 // cache and copies the object-cache.php drop-in.
-func configureObjectCache(r stack.Runner, docRoot string) error {
+func configureObjectCache(ctx context.Context, r stack.Runner, docRoot string) error {
 	phpEval := `$conf = get_option('litespeed-cache-conf', array());
 if (!is_array($conf)) $conf = array();
 $conf['object'] = true;
@@ -152,13 +168,13 @@ $dat = array(
 );
 file_put_contents(WP_CONTENT_DIR . '/.litespeed_conf.dat', wp_json_encode($dat));
 `
-	if err := r.Run(stack.WPCLIBinPath, "eval", phpEval,
+	if err := r.Run(ctx, stack.WPCLIBinPath, "eval", phpEval,
 		"--allow-root", "--path="+docRoot,
 	); err != nil {
 		return fmt.Errorf("configure object cache: %w", err)
 	}
 	// Copy object-cache.php drop-in (LSCache may not auto-create via CLI).
-	if err := r.Run("cp", "-n",
+	if err := r.Run(ctx, "cp", "-n",
 		docRoot+"/wp-content/plugins/litespeed-cache/lib/object-cache.php",
 		docRoot+"/wp-content/object-cache.php",
 	); err != nil {
