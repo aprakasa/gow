@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	htmltmpl "html/template"
 	"sync"
 	"text/template"
 )
@@ -46,10 +47,15 @@ type VHostData struct {
 }
 
 // Renderer lazily parses embedded templates once and caches them for reuse.
+// Two caches are kept: text templates for OLS configs (where Go's HTML
+// escaping would corrupt syntax), and html/template for HTML output (where
+// auto-escaping is the defense against XSS in case a rendered field ever
+// takes untrusted input).
 type Renderer struct {
-	once       sync.Once
-	cachedTmpl *template.Template
-	initErr    error
+	once     sync.Once
+	textTmpl *template.Template
+	htmlTmpl *htmltmpl.Template
+	initErr  error
 }
 
 var defaultRenderer Renderer
@@ -58,15 +64,48 @@ var templateFuncs = template.FuncMap{
 	"mul": func(a, b int) int { return a * b },
 }
 
-func (r *Renderer) render(name string, data any) (string, error) {
+// htmlTemplateFiles lists the html/template files — everything that ends up
+// served to a browser. OLS config templates stay on text/template because
+// HTML escaping would mangle the `$REQUEST_URI` and similar syntax.
+var htmlTemplateFiles = map[string]bool{
+	"index-html.html.tmpl":  true,
+	"maintenance.html.tmpl": true,
+}
+
+func (r *Renderer) init() {
 	r.once.Do(func() {
-		r.cachedTmpl, r.initErr = template.New("").Funcs(templateFuncs).ParseFS(tmplFS, "tmpl/*.tmpl")
+		r.textTmpl, r.initErr = template.New("").Funcs(templateFuncs).ParseFS(tmplFS, "tmpl/*.tmpl")
+		if r.initErr != nil {
+			return
+		}
+		r.htmlTmpl = htmltmpl.New("")
+		for name := range htmlTemplateFiles {
+			data, err := tmplFS.ReadFile("tmpl/" + name)
+			if err != nil {
+				r.initErr = fmt.Errorf("read %s: %w", name, err)
+				return
+			}
+			if _, err := r.htmlTmpl.New(name).Parse(string(data)); err != nil {
+				r.initErr = fmt.Errorf("parse %s: %w", name, err)
+				return
+			}
+		}
 	})
+}
+
+func (r *Renderer) render(name string, data any) (string, error) {
+	r.init()
 	if r.initErr != nil {
 		return "", fmt.Errorf("template: parse %s: %w", name, r.initErr)
 	}
 	var buf bytes.Buffer
-	if err := r.cachedTmpl.ExecuteTemplate(&buf, name, data); err != nil {
+	if htmlTemplateFiles[name] {
+		if err := r.htmlTmpl.ExecuteTemplate(&buf, name, data); err != nil {
+			return "", fmt.Errorf("template: execute %s: %w", name, err)
+		}
+		return buf.String(), nil
+	}
+	if err := r.textTmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		return "", fmt.Errorf("template: execute %s: %w", name, err)
 	}
 	return buf.String(), nil
