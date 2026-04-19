@@ -103,11 +103,16 @@ func TestComputeTwoLitePlusHeavy(t *testing.T) {
 	})
 
 	// Scenario C: totalWeight = 64+64+384 = 512
-	//   lite share   = 3961 * 64 / 512 = 495 → 495/64 = 7 (under CPU cap 16)
-	//   heavy share  = 3961 * 384 / 512 = 2970 → 2970/384 = 7
-	for _, name := range []string{"a.test", "b.test", "c.test"} {
-		if c := findAlloc(t, allocs, name).Children; c != 7 {
-			t.Errorf("%s Children = %d, want 7", name, c)
+	//   base share   = 3961 / 512 = 7 children for every site.
+	//   base mem     = 7*(64+64+384) = 3584; leftover = 3961-3584 = 377.
+	// Redistribution gives the leftover to the smallest-WB site that can
+	// absorb it. a.test (lite, WB=64) accepts 377/64 = 5 bonus children,
+	// consuming 320 MB. Remaining 57 MB is less than any site's WB, so the
+	// other two keep their base count.
+	want := map[string]int{"a.test": 12, "b.test": 7, "c.test": 7}
+	for name, wantN := range want {
+		if c := findAlloc(t, allocs, name).Children; c != wantN {
+			t.Errorf("%s Children = %d, want %d", name, c, wantN)
 		}
 	}
 }
@@ -122,6 +127,9 @@ func TestComputeAutoDowngradesSaturatedServer(t *testing.T) {
 
 	// Scenario D: 8× heavy on 8GB does not fit (1 child each).
 	// Downgrade heavy→woo→business; business at 192 MB yields 2 children per site.
+	// After base pass, leftover = 889 MB is redistributed in index order among
+	// equal-WB sites, so site 0 picks up 4 bonus children (889/192 = 4, used
+	// 768 MB); remaining 121 MB is less than 192 MB so the rest stay at 2.
 	for i, a := range allocs {
 		if a.PresetUsed != "business" {
 			t.Errorf("site %d PresetUsed = %q, want business", i, a.PresetUsed)
@@ -129,9 +137,38 @@ func TestComputeAutoDowngradesSaturatedServer(t *testing.T) {
 		if !a.Downgraded {
 			t.Errorf("site %d Downgraded = false, want true", i)
 		}
-		if a.Children != 2 {
-			t.Errorf("site %d Children = %d, want 2", i, a.Children)
+	}
+	if allocs[0].Children != 6 {
+		t.Errorf("site 0 Children = %d, want 6 (base 2 + 4 bonus)", allocs[0].Children)
+	}
+	for i := 1; i < len(allocs); i++ {
+		if allocs[i].Children != 2 {
+			t.Errorf("site %d Children = %d, want 2", i, allocs[i].Children)
 		}
+	}
+}
+
+func TestComputeRedistributesLeftoverToSmallestWB(t *testing.T) {
+	// One lite site leaves a lot of leftover relative to its worker budget;
+	// the redistribution pass should consume it up to the CPU ceiling.
+	allocs := mustCompute(t, []SiteInput{
+		{Name: "lite.test", Preset: "lite"},
+	})
+	a := findAlloc(t, allocs, "lite.test")
+	// CPU ceiling = 4*4 = 16; lite has plenty of room, so CPU caps.
+	if a.Children != 16 {
+		t.Errorf("Children = %d, want 16 (CPU ceiling)", a.Children)
+	}
+}
+
+func TestComputeRedistributeRespectsCPUCeiling(t *testing.T) {
+	// One standard site on a 4-core box — base share computes to raw=30 but
+	// CPU ceiling clamps at 16. Redistribution must not push past the ceiling.
+	allocs := mustCompute(t, []SiteInput{
+		{Name: "blog.test", Preset: presetStandard},
+	})
+	if allocs[0].Children != 16 {
+		t.Errorf("Children = %d, want 16 (CPU ceiling)", allocs[0].Children)
 	}
 }
 

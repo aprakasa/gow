@@ -78,6 +78,11 @@ func Compute(totalRAMMB uint64, cpuCores int, sites []SiteInput, p Policy) ([]Al
 
 		failing := failingSites(allocs, p.MinChildren)
 		if len(failing) == 0 {
+			// All sites are safely above MinChildren — redistribute the
+			// truncation remainder for better memory utilization. Skipped
+			// during downgrade iterations so starving sites go to the
+			// downgrade path rather than letting one site hog the leftover.
+			redistributeLeftover(allocs, presets, budget, cpuCeiling)
 			for i := range allocs {
 				if downgraded[i] {
 					allocs[i].Downgraded = true
@@ -186,6 +191,57 @@ func distribute(sites []SiteInput, presets []Preset, budget uint64, cpuCeiling i
 		}
 	}
 	return out
+}
+
+// redistributeLeftover hands out the truncation remainder
+// (budget - sum(children*WB)) as bonus children. Preference goes to sites
+// with the smallest WorkerBudgetMB that still have CPU headroom, so more of
+// the leftover can be allocated. Caller must guarantee every site is at or
+// above MinChildren before calling — this function is a pure utility
+// optimization, not a fairness mechanism.
+func redistributeLeftover(allocs []Allocation, presets []Preset, budget uint64, cpuCeiling int) {
+	var usedMem uint64
+	for i := range allocs {
+		usedMem += uint64(allocs[i].Children) * presets[i].WorkerBudgetMB //nolint:gosec // non-negative
+	}
+	if usedMem >= budget {
+		return
+	}
+	leftover := budget - usedMem
+	cpuCeilingU := uint64(cpuCeiling) //nolint:gosec // positive by construction
+
+	order := make([]int, len(allocs))
+	for i := range order {
+		order[i] = i
+	}
+	// Stable insertion sort by WorkerBudgetMB ascending — len(allocs) is
+	// tiny in practice, so simplicity beats asymptotics.
+	for i := 1; i < len(order); i++ {
+		for j := i; j > 0 && presets[order[j]].WorkerBudgetMB < presets[order[j-1]].WorkerBudgetMB; j-- {
+			order[j], order[j-1] = order[j-1], order[j]
+		}
+	}
+
+	for _, i := range order {
+		wb := presets[i].WorkerBudgetMB
+		if wb == 0 || leftover < wb {
+			continue
+		}
+		cpuRoom := cpuCeilingU - uint64(allocs[i].Children) //nolint:gosec // non-negative
+		canGive := min(leftover/wb, cpuRoom)
+		if canGive == 0 {
+			continue
+		}
+		allocs[i].Children += int(canGive) //nolint:gosec // bounded by cpuRoom
+		leftover -= canGive * wb
+		// Recompute memory with the new child count.
+		raw := uint64(allocs[i].Children) //nolint:gosec // non-negative
+		allocs[i].MemHardMB = raw * presets[i].PHPMemoryLimitMB
+		allocs[i].MemSoftMB = allocs[i].MemHardMB * 80 / 100
+		if leftover == 0 {
+			break
+		}
+	}
 }
 
 // failingSites returns indices of sites whose Children count is below the
