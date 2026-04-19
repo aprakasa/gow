@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bytes"
@@ -25,8 +25,8 @@ func (stubController) Validate() error       { return nil }
 func (stubController) GracefulReload() error { return nil }
 
 type testEnv struct {
-	deps deps
-	cfg  cliConfig
+	deps Deps
+	cfg  CLIConfig
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -50,40 +50,40 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	return &testEnv{
-		deps: deps{
-			detectSpecs: func() (system.Specs, error) {
+		deps: Deps{
+			DetectSpecs: func() (system.Specs, error) {
 				return system.Specs{TotalRAMMB: 8192, CPUCores: 4}, nil
 			},
-			loadPolicy: func(string) (allocator.Policy, error) {
+			LoadPolicy: func(string) (allocator.Policy, error) {
 				return allocator.DefaultPolicy(), nil
 			},
-			openStore: func(string) (*state.Store, error) {
+			OpenStore: func(string) (*state.Store, error) {
 				return store, nil
 			},
-			newOLS: func() ols.Controller {
+			NewOLS: func() ols.Controller {
 				return &stubController{}
 			},
-			newRunner: func() stack.Runner {
+			NewRunner: func() stack.Runner {
 				return &testmock.NoopRunner{}
 			},
-			installedPHP: func() []string {
+			InstalledPHP: func() []string {
 				return []string{"81", "83"}
 			},
-			phpAvailable: func(ver string) bool {
+			PHPAvailable: func(ver string) bool {
 				return ver == "81" || ver == "83"
 			},
-			wpInstall: func(string, string) error {
+			WPInstall: func(string, string) error {
 				return nil
 			},
-			dbCleanup: func(string) error {
+			DBCleanup: func(string) error {
 				return nil
 			},
 		},
-		cfg: cliConfig{
-			confDir:    confDir,
-			stateFile:  statePath,
-			policyFile: "",
-			webRoot:    webRoot,
+		cfg: CLIConfig{
+			ConfDir:    confDir,
+			StateFile:  statePath,
+			PolicyFile: "",
+			WebRoot:    webRoot,
 		},
 	}
 }
@@ -98,12 +98,14 @@ listener Default {
 }
 `
 
-func TestRunCreateWithDeps_Success(t *testing.T) {
+// --- Integration tests ---
+
+func TestRunCreate_Success(t *testing.T) {
 	e := newTestEnv(t)
-	if err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps); err != nil {
-		t.Fatalf("runCreateWithDeps() = %v", err)
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunCreate() = %v", err)
 	}
-	store, _ := e.deps.openStore(e.cfg.stateFile)
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
 	got, ok := store.Find("blog.test")
 	if !ok {
 		t.Fatal("site not found after create")
@@ -113,17 +115,17 @@ func TestRunCreateWithDeps_Success(t *testing.T) {
 	}
 }
 
-func TestRunCreateWithDeps_InvalidPreset(t *testing.T) {
+func TestRunCreate_InvalidPreset(t *testing.T) {
 	e := newTestEnv(t)
-	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "nonexistent", php: "83"}, "blog.test", e.deps)
+	err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "nonexistent", PHP: "83"}, "blog.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for invalid preset")
 	}
 }
 
-func TestRunCreateWithDeps_PHPNotInstalled(t *testing.T) {
+func TestRunCreate_PHPNotInstalled(t *testing.T) {
 	e := newTestEnv(t)
-	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "84"}, "blog.test", e.deps)
+	err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "84"}, "blog.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for uninstalled PHP version")
 	}
@@ -132,11 +134,11 @@ func TestRunCreateWithDeps_PHPNotInstalled(t *testing.T) {
 	}
 }
 
-func TestRunCreateWithDeps_NoPHPInstalled(t *testing.T) {
+func TestRunCreate_NoPHPInstalled(t *testing.T) {
 	e := newTestEnv(t)
-	e.deps.installedPHP = func() []string { return nil }
-	e.deps.phpAvailable = func(string) bool { return false }
-	err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog"}, "blog.test", e.deps)
+	e.deps.InstalledPHP = func() []string { return nil }
+	e.deps.PHPAvailable = func(string) bool { return false }
+	err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog"}, "blog.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error when no PHP installed")
 	}
@@ -145,156 +147,154 @@ func TestRunCreateWithDeps_NoPHPInstalled(t *testing.T) {
 	}
 }
 
-func TestRunCreateWithDeps_AutoDetectPHP(t *testing.T) {
+func TestRunCreate_AutoDetectPHP(t *testing.T) {
 	e := newTestEnv(t)
-	// No --php flag: should auto-detect latest (83).
-	if err := runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog"}, "blog.test", e.deps); err != nil {
-		t.Fatalf("runCreateWithDeps() = %v", err)
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog"}, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunCreate() = %v", err)
 	}
-	store, _ := e.deps.openStore(e.cfg.stateFile)
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
 	got, _ := store.Find("blog.test")
 	if got.PHPVersion != "83" {
 		t.Errorf("PHP = %q, want %q", got.PHPVersion, "83")
 	}
 }
 
-func TestRunCreateWithDeps_HTMLSkipsPHP(t *testing.T) {
+func TestRunCreate_HTMLSkipsPHP(t *testing.T) {
 	e := newTestEnv(t)
-	e.deps.installedPHP = func() []string { return nil }
-	e.deps.phpAvailable = func(string) bool { return false }
-	if err := runCreateWithDeps(e.cfg, siteFlags{siteType: "html"}, "static.test", e.deps); err != nil {
-		t.Fatalf("runCreateWithDeps() = %v", err)
+	e.deps.InstalledPHP = func() []string { return nil }
+	e.deps.PHPAvailable = func(string) bool { return false }
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "html"}, "static.test", e.deps); err != nil {
+		t.Fatalf("RunCreate() = %v", err)
 	}
-	store, _ := e.deps.openStore(e.cfg.stateFile)
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
 	got, _ := store.Find("static.test")
 	if got.PHPVersion != "" {
 		t.Errorf("PHP = %q, want empty for HTML site", got.PHPVersion)
 	}
 }
 
-func TestRunDeleteWithDeps_Success(t *testing.T) {
+func TestRunDelete_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
-	if err := runDeleteWithDeps(e.cfg, siteFlags{noPrompt: true}, "blog.test", e.deps); err != nil {
-		t.Fatalf("runDeleteWithDeps() = %v", err)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunDelete(e.cfg, SiteFlags{NoPrompt: true}, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunDelete() = %v", err)
 	}
-	store, _ := e.deps.openStore(e.cfg.stateFile)
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
 	if _, ok := store.Find("blog.test"); ok {
 		t.Error("site should be gone after delete")
 	}
 }
 
-func TestRunDeleteWithDeps_NotFound(t *testing.T) {
+func TestRunDelete_NotFound(t *testing.T) {
 	e := newTestEnv(t)
-	err := runDeleteWithDeps(e.cfg, siteFlags{noPrompt: true}, "nope.test", e.deps)
+	err := RunDelete(e.cfg, SiteFlags{NoPrompt: true}, "nope.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for nonexistent site")
 	}
 }
 
-func TestRunListWithDeps_Empty(t *testing.T) {
+func TestRunList_Empty(t *testing.T) {
 	e := newTestEnv(t)
 	var buf bytes.Buffer
-	if err := runListWithDeps(e.cfg, &buf, e.deps); err != nil {
-		t.Fatalf("runListWithDeps() = %v", err)
+	if err := RunList(e.cfg, &buf, e.deps); err != nil {
+		t.Fatalf("RunList() = %v", err)
 	}
 	if !strings.Contains(buf.String(), "No sites") {
 		t.Errorf("expected 'No sites', got %q", buf.String())
 	}
 }
 
-func TestRunListWithDeps_ShowsSite(t *testing.T) {
+func TestRunList_ShowsSite(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
 	var buf bytes.Buffer
-	if err := runListWithDeps(e.cfg, &buf, e.deps); err != nil {
-		t.Fatalf("runListWithDeps() = %v", err)
+	if err := RunList(e.cfg, &buf, e.deps); err != nil {
+		t.Fatalf("RunList() = %v", err)
 	}
 	if !strings.Contains(buf.String(), "blog.test") {
 		t.Errorf("expected 'blog.test', got %q", buf.String())
 	}
 }
 
-func TestRunUpdateWithDeps_Success(t *testing.T) {
+func TestRunUpdate_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
-	if err := runUpdateWithDeps(e.cfg, siteFlags{preset: "woocommerce"}, "blog.test", e.deps); err != nil {
-		t.Fatalf("runUpdateWithDeps() = %v", err)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunUpdate(e.cfg, SiteFlags{Preset: "woocommerce"}, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunUpdate() = %v", err)
 	}
-	store, _ := e.deps.openStore(e.cfg.stateFile)
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
 	got, _ := store.Find("blog.test")
 	if got.Preset != "woocommerce" {
 		t.Errorf("preset = %q, want %q", got.Preset, "woocommerce")
 	}
 }
 
-func TestRunUpdateWithDeps_EmptyPreset(t *testing.T) {
+func TestRunUpdate_EmptyPreset(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
-	// Empty preset should succeed — it means "no change"
-	if err := runUpdateWithDeps(e.cfg, siteFlags{preset: ""}, "blog.test", e.deps); err != nil {
-		t.Fatalf("runUpdateWithDeps() = %v", err)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunUpdate(e.cfg, SiteFlags{Preset: ""}, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunUpdate() = %v", err)
 	}
 }
 
-func TestRunReconcileWithDeps_Success(t *testing.T) {
+func TestRunReconcile_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
-	if err := runReconcileWithDeps(e.cfg, e.deps); err != nil {
-		t.Fatalf("runReconcileWithDeps() = %v", err)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunReconcile(e.cfg, e.deps); err != nil {
+		t.Fatalf("RunReconcile() = %v", err)
 	}
 }
 
-func TestRunStatusWithDeps_Empty(t *testing.T) {
+func TestRunStatus_Empty(t *testing.T) {
 	e := newTestEnv(t)
 	var buf bytes.Buffer
-	if err := runStatusWithDeps(e.cfg, &buf, e.deps); err != nil {
-		t.Fatalf("runStatusWithDeps() = %v", err)
+	if err := RunStatus(e.cfg, &buf, e.deps); err != nil {
+		t.Fatalf("RunStatus() = %v", err)
 	}
 	if !strings.Contains(buf.String(), "No sites") {
 		t.Errorf("expected 'No sites', got %q", buf.String())
 	}
 }
 
-func TestRunStatusWithDeps_ShowAllocation(t *testing.T) {
+func TestRunStatus_ShowAllocation(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
 	var buf bytes.Buffer
-	if err := runStatusWithDeps(e.cfg, &buf, e.deps); err != nil {
-		t.Fatalf("runStatusWithDeps() = %v", err)
+	if err := RunStatus(e.cfg, &buf, e.deps); err != nil {
+		t.Fatalf("RunStatus() = %v", err)
 	}
 	if !strings.Contains(buf.String(), "blog.test") {
 		t.Errorf("expected 'blog.test', got %q", buf.String())
 	}
 }
 
-func TestRunSSLWithDeps_Success(t *testing.T) {
+func TestRunSSL_Success(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "ssl.test", e.deps)
-	if err := runSSLWithDeps(e.cfg, siteFlags{sslEmail: "admin@ssl.test"}, "ssl.test", e.deps); err != nil {
-		t.Fatalf("runSSLWithDeps() = %v", err)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "ssl.test", e.deps)
+	if err := RunSSL(e.cfg, SiteFlags{SSLEmail: "admin@ssl.test"}, "ssl.test", e.deps); err != nil {
+		t.Fatalf("RunSSL() = %v", err)
 	}
-	store, _ := e.deps.openStore(e.cfg.stateFile)
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
 	got, _ := store.Find("ssl.test")
 	if !got.SSLEnabled {
 		t.Error("SSLEnabled should be true after ssl command")
 	}
 }
 
-func TestRunSSLWithDeps_NotFound(t *testing.T) {
+func TestRunSSL_NotFound(t *testing.T) {
 	e := newTestEnv(t)
-	err := runSSLWithDeps(e.cfg, siteFlags{sslEmail: "admin@test.com"}, "nope.test", e.deps)
+	err := RunSSL(e.cfg, SiteFlags{SSLEmail: "admin@test.com"}, "nope.test", e.deps)
 	if err == nil {
 		t.Fatal("expected error for nonexistent site")
 	}
 }
 
-func TestNewManagerWithDeps_DetectFails(t *testing.T) {
+func TestNewManager_DetectFails(t *testing.T) {
 	e := newTestEnv(t)
-	e.deps.detectSpecs = func() (system.Specs, error) {
+	e.deps.DetectSpecs = func() (system.Specs, error) {
 		return system.Specs{}, errTestDetect
 	}
-	_, err := newManagerWithDeps(e.cfg, e.deps)
+	_, err := NewManager(e.cfg, e.deps)
 	if err == nil {
 		t.Fatal("expected error when detect fails")
 	}
@@ -303,39 +303,18 @@ func TestNewManagerWithDeps_DetectFails(t *testing.T) {
 	}
 }
 
-func TestNewManagerWithDeps_OpenStoreFails(t *testing.T) {
+func TestNewManager_OpenStoreFails(t *testing.T) {
 	e := newTestEnv(t)
-	e.deps.openStore = func(string) (*state.Store, error) {
+	e.deps.OpenStore = func(string) (*state.Store, error) {
 		return nil, fmt.Errorf("permission denied")
 	}
-	_, err := newManagerWithDeps(e.cfg, e.deps)
+	_, err := NewManager(e.cfg, e.deps)
 	if err == nil {
 		t.Fatal("expected error when openStore fails")
 	}
 	if !strings.Contains(err.Error(), "open state") {
 		t.Errorf("error = %q, want 'open state'", err.Error())
 	}
-}
-
-// --- Logging runner for unit tests ---
-
-type cmdCall struct {
-	name string
-	args []string
-}
-
-type cmdLoggingRunner struct {
-	calls []cmdCall
-}
-
-func (r *cmdLoggingRunner) Run(name string, args ...string) error {
-	r.calls = append(r.calls, cmdCall{name, args})
-	return nil
-}
-
-func (r *cmdLoggingRunner) Output(name string, args ...string) (string, error) {
-	r.calls = append(r.calls, cmdCall{name, args})
-	return "", nil
 }
 
 func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
@@ -397,9 +376,9 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 
 func TestRunStackPurge_BlockedBySites(t *testing.T) {
 	e := newTestEnv(t)
-	_ = runCreateWithDeps(e.cfg, siteFlags{siteType: "wp", preset: "blog", php: "83"}, "blog.test", e.deps)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
 
-	err := runStackPurge(stackFlags{redis: true}, e.cfg)
+	err := RunStackPurge(StackFlags{Redis: true}, e.cfg, e.deps)
 	if err == nil {
 		t.Fatal("expected purge to be blocked by dependent sites")
 	}
@@ -413,12 +392,29 @@ func TestRunStackPurge_BlockedBySites(t *testing.T) {
 
 func TestRunStackPurge_AllowedWhenNoSites(t *testing.T) {
 	e := newTestEnv(t)
-	// No sites created — purge should proceed (component not installed in test,
-	// but the dependency check should pass).
-	err := runStackPurge(stackFlags{redis: true}, e.cfg)
-	// Will fail because redis isn't installed in test env, but should NOT
-	// fail with "cannot purge" dependency error.
+	err := RunStackPurge(StackFlags{Redis: true}, e.cfg, e.deps)
 	if err != nil && strings.Contains(err.Error(), "cannot purge") {
 		t.Fatalf("purge should not be blocked when no sites exist: %v", err)
 	}
+}
+
+// --- Logging runner for tests ---
+
+type cmdCall struct {
+	name string
+	args []string
+}
+
+type cmdLoggingRunner struct {
+	calls []cmdCall
+}
+
+func (r *cmdLoggingRunner) Run(name string, args ...string) error {
+	r.calls = append(r.calls, cmdCall{name, args})
+	return nil
+}
+
+func (r *cmdLoggingRunner) Output(name string, args ...string) (string, error) {
+	r.calls = append(r.calls, cmdCall{name, args})
+	return "", nil
 }

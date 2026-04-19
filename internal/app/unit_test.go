@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bytes"
@@ -70,79 +70,6 @@ func TestFormatPresets_ListsAll(t *testing.T) {
 		if !strings.Contains(got, name) {
 			t.Errorf("output should contain preset %q", name)
 		}
-	}
-}
-
-func TestComponentDependents_NoSites(t *testing.T) {
-	got := componentDependents("redis", nil)
-	if len(got) != 0 {
-		t.Errorf("expected no dependents, got %v", got)
-	}
-}
-
-func TestComponentDependents_OLS(t *testing.T) {
-	sites := []state.Site{
-		{Name: "a.test", Type: "wp", PHPVersion: "83"},
-		{Name: "b.test", Type: "html"},
-	}
-	got := componentDependents("ols", sites)
-	if len(got) != 2 {
-		t.Fatalf("expected 2 dependents, got %v", got)
-	}
-}
-
-func TestComponentDependents_MariaDB(t *testing.T) {
-	sites := []state.Site{
-		{Name: "wp.test", Type: "wp"},
-		{Name: "php.test", Type: "php"},
-		{Name: "html.test", Type: "html"},
-	}
-	got := componentDependents("mariadb", sites)
-	if len(got) != 2 {
-		t.Fatalf("expected 2 dependents (wp+php), got %v", got)
-	}
-}
-
-func TestComponentDependents_Redis(t *testing.T) {
-	sites := []state.Site{
-		{Name: "wp.test", Type: "wp"},
-		{Name: "php.test", Type: "php"},
-		{Name: "html.test", Type: "html"},
-	}
-	got := componentDependents("redis", sites)
-	if len(got) != 1 || got[0] != "wp.test" {
-		t.Fatalf("expected [wp.test], got %v", got)
-	}
-}
-
-func TestComponentDependents_LSPHP(t *testing.T) {
-	sites := []state.Site{
-		{Name: "a.test", Type: "wp", PHPVersion: "83"},
-		{Name: "b.test", Type: "wp", PHPVersion: "84"},
-	}
-	got := componentDependents("lsphp83", sites)
-	if len(got) != 1 || got[0] != "a.test" {
-		t.Fatalf("expected [a.test], got %v", got)
-	}
-}
-
-func TestComponentDependents_LSPHP_NoMatch(t *testing.T) {
-	sites := []state.Site{
-		{Name: "a.test", Type: "wp", PHPVersion: "84"},
-	}
-	got := componentDependents("lsphp83", sites)
-	if len(got) != 0 {
-		t.Errorf("expected no dependents, got %v", got)
-	}
-}
-
-func TestComponentDependents_UnknownComponent(t *testing.T) {
-	sites := []state.Site{
-		{Name: "a.test", Type: "wp"},
-	}
-	got := componentDependents("wpcli", sites)
-	if len(got) != 0 {
-		t.Errorf("expected no dependents for wpcli, got %v", got)
 	}
 }
 
@@ -230,52 +157,125 @@ func TestFormatStatus_ShowsDowngrade(t *testing.T) {
 	}
 }
 
+func TestComponentDependents_NoSites(t *testing.T) {
+	got := componentDependents("redis", nil)
+	if len(got) != 0 {
+		t.Errorf("expected no dependents, got %v", got)
+	}
+}
+
+func TestComponentDependents_OLS(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp", PHPVersion: "83"},
+		{Name: "b.test", Type: "html"},
+	}
+	got := componentDependents("ols", sites)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 dependents, got %v", got)
+	}
+}
+
+func TestComponentDependents_MariaDB(t *testing.T) {
+	sites := []state.Site{
+		{Name: "wp.test", Type: "wp"},
+		{Name: "php.test", Type: "php"},
+		{Name: "html.test", Type: "html"},
+	}
+	got := componentDependents("mariadb", sites)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 dependents (wp+php), got %v", got)
+	}
+}
+
+func TestComponentDependents_Redis(t *testing.T) {
+	sites := []state.Site{
+		{Name: "wp.test", Type: "wp"},
+		{Name: "php.test", Type: "php"},
+		{Name: "html.test", Type: "html"},
+	}
+	got := componentDependents("redis", sites)
+	if len(got) != 1 || got[0] != "wp.test" {
+		t.Fatalf("expected [wp.test], got %v", got)
+	}
+}
+
+func TestComponentDependents_LSPHP(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp", PHPVersion: "83"},
+		{Name: "b.test", Type: "wp", PHPVersion: "84"},
+	}
+	got := componentDependents("lsphp83", sites)
+	if len(got) != 1 || got[0] != "a.test" {
+		t.Fatalf("expected [a.test], got %v", got)
+	}
+}
+
+func TestComponentDependents_LSPHP_NoMatch(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp", PHPVersion: "84"},
+	}
+	got := componentDependents("lsphp83", sites)
+	if len(got) != 0 {
+		t.Errorf("expected no dependents, got %v", got)
+	}
+}
+
+func TestComponentDependents_UnknownComponent(t *testing.T) {
+	sites := []state.Site{
+		{Name: "a.test", Type: "wp"},
+	}
+	got := componentDependents("wpcli", sites)
+	if len(got) != 0 {
+		t.Errorf("expected no dependents for wpcli, got %v", got)
+	}
+}
+
 func TestResolveTuneFlags(t *testing.T) {
 	tests := []struct {
-		name           string
-		sf             siteFlags
-		wantPreset     string
-		wantCustom     *state.CustomPreset
-		wantErr        string
-		wantNilCustom  bool
+		name          string
+		sf            SiteFlags
+		wantPreset    string
+		wantCustom    *state.CustomPreset
+		wantErr       string
+		wantNilCustom bool
 	}{
 		{
 			name:          "empty tune returns empty preset",
-			sf:            siteFlags{preset: ""},
+			sf:            SiteFlags{Preset: ""},
 			wantPreset:    "",
 			wantNilCustom: true,
 		},
 		{
 			name:          "blog maps to standard",
-			sf:            siteFlags{preset: "blog"},
+			sf:            SiteFlags{Preset: "blog"},
 			wantPreset:    "standard",
 			wantNilCustom: true,
 		},
 		{
 			name:          "woocommerce maps to woocommerce",
-			sf:            siteFlags{preset: "woocommerce"},
+			sf:            SiteFlags{Preset: "woocommerce"},
 			wantPreset:    "woocommerce",
 			wantNilCustom: true,
 		},
 		{
 			name:    "custom without memory errors",
-			sf:      siteFlags{preset: "custom"},
+			sf:      SiteFlags{Preset: "custom"},
 			wantErr: "--tune custom requires --php-memory and --worker-budget > 0",
 		},
 		{
 			name:    "custom without worker budget errors",
-			sf:      siteFlags{preset: "custom", phpMemory: 256},
+			sf:      SiteFlags{Preset: "custom", PHPMemory: 256},
 			wantErr: "--tune custom requires --php-memory and --worker-budget > 0",
 		},
 		{
 			name:       "custom with both set returns custom preset",
-			sf:         siteFlags{preset: "custom", phpMemory: 512, workerBudget: 2048},
+			sf:         SiteFlags{Preset: "custom", PHPMemory: 512, WorkerBudget: 2048},
 			wantPreset: "custom",
 			wantCustom: &state.CustomPreset{PHPMemoryMB: 512, WorkerBudgetMB: 2048},
 		},
 		{
 			name:          "unknown preset passes through",
-			sf:            siteFlags{preset: "standard"},
+			sf:            SiteFlags{Preset: "standard"},
 			wantPreset:    "standard",
 			wantNilCustom: true,
 		},
@@ -309,5 +309,96 @@ func TestResolveTuneFlags(t *testing.T) {
 				t.Fatalf("expected %+v, got %+v", tt.wantCustom, custom)
 			}
 		})
+	}
+}
+
+// --- resolveStackFlags tests ---
+
+func TestResolveStackFlags_DefaultWhenEmpty(t *testing.T) {
+	sf := StackFlags{}
+	names, phpVersions := resolveStackFlags(sf)
+	wantNames := []string{"ols", "mariadb", "redis", "wpcli"}
+	if len(names) != len(wantNames) {
+		t.Fatalf("names = %v, want %v", names, wantNames)
+	}
+	for i, n := range wantNames {
+		if names[i] != n {
+			t.Errorf("names[%d] = %q, want %q", i, names[i], n)
+		}
+	}
+	if len(phpVersions) != 1 || phpVersions[0] != "83" {
+		t.Errorf("phpVersions = %v, want [83]", phpVersions)
+	}
+}
+
+func TestResolveStackFlags_IndividualFlags(t *testing.T) {
+	sf := StackFlags{OLS: true, Redis: true}
+	names, phpVersions := resolveStackFlags(sf)
+	if len(names) != 2 {
+		t.Fatalf("names = %d, want 2", len(names))
+	}
+	if names[0] != "ols" {
+		t.Errorf("names[0] = %q, want %q", names[0], "ols")
+	}
+	if names[1] != "redis" {
+		t.Errorf("names[1] = %q, want %q", names[1], "redis")
+	}
+	if len(phpVersions) != 0 {
+		t.Errorf("phpVersions = %v, want empty", phpVersions)
+	}
+}
+
+func TestResolveStackFlags_AllFlagsSet(t *testing.T) {
+	sf := StackFlags{OLS: true, MariaDB: true, Redis: true, WPCLI: true, Composer: true}
+	names, _ := resolveStackFlags(sf)
+	if len(names) != 5 {
+		t.Fatalf("names = %d, want 5", len(names))
+	}
+}
+
+func TestResolveStackFlags_PHPCombinable(t *testing.T) {
+	sf := StackFlags{PHP83: true, PHP84: true}
+	names, phpVersions := resolveStackFlags(sf)
+	if len(names) != 0 {
+		t.Errorf("names = %v, want empty", names)
+	}
+	if len(phpVersions) != 2 {
+		t.Fatalf("phpVersions = %d, want 2", len(phpVersions))
+	}
+	if phpVersions[0] != "83" || phpVersions[1] != "84" {
+		t.Errorf("phpVersions = %v, want [83 84]", phpVersions)
+	}
+}
+
+func TestResolveStackFlags_PHPDedup(t *testing.T) {
+	sf := StackFlags{PHP: "83", PHP83: true}
+	_, phpVersions := resolveStackFlags(sf)
+	if len(phpVersions) != 1 {
+		t.Errorf("phpVersions = %v, want single [83]", phpVersions)
+	}
+}
+
+func TestResolveStackFlags_PHPDefaultFlag(t *testing.T) {
+	sf := StackFlags{PHP: "83"}
+	_, phpVersions := resolveStackFlags(sf)
+	if len(phpVersions) != 1 || phpVersions[0] != "83" {
+		t.Errorf("phpVersions = %v, want [83]", phpVersions)
+	}
+}
+
+func TestResolveStackFlags_WPCLIComposer(t *testing.T) {
+	sf := StackFlags{WPCLI: true, Composer: true}
+	names, phpVersions := resolveStackFlags(sf)
+	if len(names) != 2 {
+		t.Fatalf("names = %d, want 2", len(names))
+	}
+	if names[0] != "wpcli" {
+		t.Errorf("names[0] = %q, want wpcli", names[0])
+	}
+	if names[1] != "composer" {
+		t.Errorf("names[1] = %q, want composer", names[1])
+	}
+	if len(phpVersions) != 0 {
+		t.Errorf("phpVersions = %v, want empty", phpVersions)
 	}
 }
