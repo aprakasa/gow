@@ -86,6 +86,7 @@ type stackFlags struct {
 	redis    bool
 	wpcli    bool
 	composer bool
+	certbot  bool
 	target   string // --target for migrate
 }
 
@@ -805,7 +806,7 @@ var (
 )
 
 func stackFlagsEmpty(sf stackFlags) bool {
-	return !sf.ols && !sf.mariadb && !sf.redis && !sf.wpcli && !sf.composer &&
+	return !sf.ols && !sf.mariadb && !sf.redis && !sf.wpcli && !sf.composer && !sf.certbot &&
 		sf.php == "" && !sf.php81 && !sf.php82 && !sf.php83 && !sf.php84 && !sf.php85
 }
 
@@ -938,6 +939,7 @@ func addStackFlags(cmd *cobra.Command, sf *stackFlags) {
 	cmd.Flags().BoolVar(&sf.redis, "redis", false, "Redis")
 	cmd.Flags().BoolVar(&sf.wpcli, "wpcli", false, "WP-CLI")
 	cmd.Flags().BoolVar(&sf.composer, "composer", false, "Composer")
+	cmd.Flags().BoolVar(&sf.certbot, "certbot", false, "Certbot (Let's Encrypt)")
 }
 
 func resolveStackFlags(sf stackFlags) ([]string, []string) {
@@ -958,6 +960,9 @@ func resolveStackFlags(sf stackFlags) ([]string, []string) {
 	}
 	if sf.composer {
 		names = append(names, "composer")
+	}
+	if sf.certbot {
+		names = append(names, "certbot")
 	}
 
 	seen := make(map[string]bool)
