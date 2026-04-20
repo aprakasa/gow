@@ -748,7 +748,7 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 		s.UnixUser = ""
 	})
 	httpdConfPath := filepath.Join(dir, "conf", "httpd_config.conf")
-	data, _ := os.ReadFile(httpdConfPath)
+	data, _ := os.ReadFile(httpdConfPath) //nolint:gosec // test reads from temp dir
 	os.WriteFile(httpdConfPath, []byte(strings.ReplaceAll(string(data),
 		"restrained               1", "restrained               0")), 0o644)
 
@@ -792,7 +792,7 @@ func TestReconcile_SiteWithSSL(t *testing.T) {
 	}
 
 	// Verify SSL listener in httpd_config.conf.
-	httpdData, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf"))
+	httpdData, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf")) //nolint:gosec // test reads from temp dir
 	httpdContent := string(httpdData)
 	if !strings.Contains(httpdContent, "listener SSL {") {
 		t.Error("missing SSL listener")
@@ -807,7 +807,7 @@ func TestReconcile_SiteWithSSL(t *testing.T) {
 	}
 
 	// Verify vhost config has ssl block.
-	vhostData, _ := os.ReadFile(filepath.Join(dir, "conf", "vhosts", "ssl.test", "vhconf.conf"))
+	vhostData, _ := os.ReadFile(filepath.Join(dir, "conf", "vhosts", "ssl.test", "vhconf.conf")) //nolint:gosec // test reads from temp dir
 	vhostContent := string(vhostData)
 	if !strings.Contains(vhostContent, "ssl {") {
 		t.Error("missing ssl block in vhost config")
@@ -838,7 +838,7 @@ func TestReconcile_HTMLSiteWithSSL(t *testing.T) {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
-	vhostData, _ := os.ReadFile(filepath.Join(dir, "conf", "vhosts", "static.test", "vhconf.conf"))
+	vhostData, _ := os.ReadFile(filepath.Join(dir, "conf", "vhosts", "static.test", "vhconf.conf")) //nolint:gosec // test reads from temp dir
 	vhostContent := string(vhostData)
 	if !strings.Contains(vhostContent, "ssl {") {
 		t.Error("missing ssl block for HTML site")
@@ -864,7 +864,7 @@ func TestDelete_SSLSite(t *testing.T) {
 		t.Fatalf("Delete() = %v", err)
 	}
 
-	httpdData, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf"))
+	httpdData, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf")) //nolint:gosec // test reads from temp dir
 	httpdContent := string(httpdData)
 	// SSL map entry should be gone.
 	if strings.Contains(httpdContent, "ssl.test ssl.test") {

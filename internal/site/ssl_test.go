@@ -42,14 +42,14 @@ func setupManagerWithRunner(t *testing.T, runner stack.Runner) (*Manager, string
 		t.Fatalf("Open store: %v", err)
 	}
 	confDir := filepath.Join(dir, "conf")
-	if err := os.MkdirAll(confDir, 0o755); err != nil {
+	if err := os.MkdirAll(confDir, 0o755); err != nil { //nolint:gosec // test dir
 		t.Fatalf("mkdir conf: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(confDir, "httpd_config.conf"), []byte(baseOLSConf), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(confDir, "httpd_config.conf"), []byte(baseOLSConf), 0o644); err != nil { //nolint:gosec // test config
 		t.Fatalf("write httpd_config: %v", err)
 	}
 	webRoot := filepath.Join(dir, "www")
-	if err := os.MkdirAll(webRoot, 0o755); err != nil {
+	if err := os.MkdirAll(webRoot, 0o755); err != nil { //nolint:gosec // test dir
 		t.Fatalf("mkdir www: %v", err)
 	}
 	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))

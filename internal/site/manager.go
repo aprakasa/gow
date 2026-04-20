@@ -195,11 +195,11 @@ func renderMaintenanceVHost(data template.VHostData) (string, error) {
 	}
 	// Write the maintenance page to docRoot/index.html.
 	htdocsDir := filepath.Join(data.WebRoot, "htdocs")
-	if err := os.MkdirAll(htdocsDir, 0o755); err != nil {
+	if err := os.MkdirAll(htdocsDir, 0o755); err != nil { //nolint:gosec // lsws must traverse
 		return "", fmt.Errorf("create htdocs dir: %w", err)
 	}
 	indexPath := filepath.Join(htdocsDir, "index.html")
-	if err := os.WriteFile(indexPath, []byte(maintHTML), 0o644); err != nil {
+	if err := os.WriteFile(indexPath, []byte(maintHTML), 0o644); err != nil { //nolint:gosec // lsws must read
 		return "", fmt.Errorf("write maintenance page: %w", err)
 	}
 	return template.RenderVHost("html", data)
