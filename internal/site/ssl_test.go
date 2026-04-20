@@ -60,14 +60,18 @@ func TestEnableSSL_Success(t *testing.T) {
 	ctx := context.Background()
 	rr := &recordingRunner{}
 	m, dir := setupManagerWithRunner(t, rr)
-	os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir htdocs: %v", err)
+	}
 
-	m.store.Add(state.Site{
+	if err := m.store.Add(state.Site{
 		Name:       "ssl.test",
 		Type:       "wp",
 		PHPVersion: "83",
 		Preset:     "standard",
-	})
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
 
 	if err := m.EnableSSL(ctx, "ssl.test", "admin@ssl.test", false); err != nil {
 		t.Fatalf("EnableSSL() = %v", err)
@@ -110,9 +114,13 @@ func TestEnableSSL_Staging(t *testing.T) {
 	ctx := context.Background()
 	rr := &recordingRunner{}
 	m, dir := setupManagerWithRunner(t, rr)
-	os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755)
+	if err := os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir htdocs: %v", err)
+	}
 
-	m.store.Add(state.Site{Name: "ssl.test", Type: "wp", PHPVersion: "83", Preset: "standard"})
+	if err := m.store.Add(state.Site{Name: "ssl.test", Type: "wp", PHPVersion: "83", Preset: "standard"}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
 
 	if err := m.EnableSSL(ctx, "ssl.test", "admin@ssl.test", true); err != nil {
 		t.Fatalf("EnableSSL() = %v", err)

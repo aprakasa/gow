@@ -199,8 +199,12 @@ func TestRemoveSSLMapEntry_OnlyRemovesFromSSL(t *testing.T) {
 		1,
 	)
 	p := writeHttpdConf(t, conf)
-	EnsureSSLListener(p)
-	AddSSLMapEntry(p, "blog.test")
+	if err := EnsureSSLListener(p); err != nil {
+		t.Fatalf("EnsureSSLListener() = %v", err)
+	}
+	if err := AddSSLMapEntry(p, "blog.test"); err != nil {
+		t.Fatalf("AddSSLMapEntry() = %v", err)
+	}
 
 	if err := RemoveSSLMapEntry(p, "blog.test"); err != nil {
 		t.Fatalf("RemoveSSLMapEntry() = %v", err)

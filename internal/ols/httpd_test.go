@@ -155,7 +155,9 @@ func TestUpdateVHostRestrained(t *testing.T) {
 		"restrained               0\n"+
 			"    setUIDMode               2",
 	)
-	os.WriteFile(p, []byte(content), 0o644) //nolint:gosec // test
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil { //nolint:gosec // test
+		t.Fatalf("write httpd_config: %v", err)
+	}
 
 	// Update it to 1.
 	if err := UpdateVHostRestrained(p, "blog.test", 1); err != nil {

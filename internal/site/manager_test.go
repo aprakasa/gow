@@ -744,13 +744,17 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 	}
 
 	// Simulate pre-isolation state: no UnixUser, restrained 0.
-	m.store.Update("blog.test", func(s *state.Site) {
+	if err := m.store.Update("blog.test", func(s *state.Site) {
 		s.UnixUser = ""
-	})
+	}); err != nil {
+		t.Fatalf("store.Update: %v", err)
+	}
 	httpdConfPath := filepath.Join(dir, "conf", "httpd_config.conf")
 	data, _ := os.ReadFile(httpdConfPath) //nolint:gosec // test reads from temp dir
-	os.WriteFile(httpdConfPath, []byte(strings.ReplaceAll(string(data),
-		"restrained               1", "restrained               0")), 0o644)
+	if err := os.WriteFile(httpdConfPath, []byte(strings.ReplaceAll(string(data),
+		"restrained               1", "restrained               0")), 0o644); err != nil { //nolint:gosec // test config
+		t.Fatalf("write httpd_config: %v", err)
+	}
 
 	if err := m.Update(ctx, "blog.test", "", "", nil, true); err != nil {
 		t.Fatalf("Update(isolate) = %v", err)
@@ -774,10 +778,12 @@ func TestReconcile_SiteWithSSL(t *testing.T) {
 	m, dir := setupManager(t)
 	// Create docroot.
 	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
-	os.MkdirAll(docRoot, 0o755)
+	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir docRoot: %v", err)
+	}
 
 	store := m.store
-	store.Add(state.Site{
+	if err := store.Add(state.Site{
 		Name:       "ssl.test",
 		Type:       "wp",
 		PHPVersion: "83",
@@ -785,7 +791,9 @@ func TestReconcile_SiteWithSSL(t *testing.T) {
 		SSLEnabled: true,
 		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
 		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
-	})
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
 
 	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
@@ -824,15 +832,19 @@ func TestReconcile_HTMLSiteWithSSL(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 	docRoot := filepath.Join(dir, "www", "static.test", "htdocs")
-	os.MkdirAll(docRoot, 0o755)
+	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir docRoot: %v", err)
+	}
 
-	m.store.Add(state.Site{
+	if err := m.store.Add(state.Site{
 		Name:       "static.test",
 		Type:       "html",
 		SSLEnabled: true,
 		CertPath:   "/etc/letsencrypt/live/static.test/fullchain.pem",
 		KeyPath:    "/etc/letsencrypt/live/static.test/privkey.pem",
-	})
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
 
 	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
@@ -849,16 +861,22 @@ func TestDelete_SSLSite(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
-	os.MkdirAll(docRoot, 0o755)
+	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir docRoot: %v", err)
+	}
 
-	m.store.Add(state.Site{
+	if err := m.store.Add(state.Site{
 		Name:       "ssl.test",
 		Type:       "html",
 		SSLEnabled: true,
 		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
 		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
-	})
-	m.Reconcile(ctx)
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+	if err := m.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
 
 	if err := m.Delete(ctx, "ssl.test"); err != nil {
 		t.Fatalf("Delete() = %v", err)
