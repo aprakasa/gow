@@ -43,6 +43,7 @@ type SiteFlags struct {
 	SSLWildcard  bool   // --wildcard (ssl only, requires --dns)
 	SSLDNS       string // --dns (ssl only, currently: "cloudflare")
 	SSLHSTS      bool   // --hsts (ssl only)
+	RestoreFile  string // --file (restore only)
 }
 
 // StackFlags holds per-command flags for stack operations.

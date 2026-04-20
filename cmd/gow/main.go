@@ -129,7 +129,37 @@ func main() {
 	sslCmd.Flags().BoolVar(&sSSLFlags.SSLHSTS, "hsts", false, "Emit Strict-Transport-Security header")
 	_ = sslCmd.MarkFlagRequired("email")
 
-	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd)
+	cloneCmd := &cobra.Command{
+		Use:   "clone <src> <dest>",
+		Short: "Clone a site to a new domain",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunClone(cfg, args[0], args[1], d)
+		},
+	}
+
+	backupCmd := &cobra.Command{
+		Use:   "backup <domain>",
+		Short: "Create a backup archive of a site",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunBackup(cfg, args[0], d)
+		},
+	}
+
+	var restoreFlags app.SiteFlags
+	restoreCmd := &cobra.Command{
+		Use:   "restore <domain>",
+		Short: "Restore a site from a backup archive",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunRestore(cfg, args[0], restoreFlags.RestoreFile, d)
+		},
+	}
+	restoreCmd.Flags().StringVar(&restoreFlags.RestoreFile, "file", "", "Path to backup archive (required)")
+	_ = restoreCmd.MarkFlagRequired("file")
+
+	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd, cloneCmd, backupCmd, restoreCmd)
 
 	// --- Stack commands ---
 

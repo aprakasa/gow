@@ -26,6 +26,7 @@ func (r *recordingRunner) Run(_ context.Context, name string, args ...string) er
 }
 
 func (r *recordingRunner) Output(_ context.Context, name string, args ...string) (string, error) {
+	r.commands = append(r.commands, append([]string{name}, args...))
 	return "", nil
 }
 
