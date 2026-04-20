@@ -325,7 +325,7 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 	r := &cmdLoggingRunner{}
 	docRoot := "/var/www/example.com/htdocs"
 
-	if err := configureObjectCache(context.Background(), r, docRoot); err != nil {
+	if err := configureObjectCache(context.Background(), r, docRoot, "", ""); err != nil {
 		t.Fatalf("configureObjectCache() = %v", err)
 	}
 

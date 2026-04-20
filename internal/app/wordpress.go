@@ -113,17 +113,21 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		if multisite == "subdomain" {
 			subdomain = "true"
 		}
-		consts := []struct{ name, val string }{
-			{"MULTISITE", "true"},
-			{"SUBDOMAIN_INSTALL", subdomain},
-			{"DOMAIN_CURRENT_SITE", "'" + domain + "'"},
-			{"PATH_CURRENT_SITE", "'/'"},
-			{"SITE_ID_CURRENT_SITE", "1"},
-			{"BLOG_ID_CURRENT_SITE", "1"},
+		consts := []struct{ name, val string; raw bool }{
+			{"MULTISITE", "true", false},
+			{"SUBDOMAIN_INSTALL", subdomain, false},
+			{"DOMAIN_CURRENT_SITE", "'" + domain + "'", true},
+			{"PATH_CURRENT_SITE", "'/'", true},
+			{"SITE_ID_CURRENT_SITE", "1", false},
+			{"BLOG_ID_CURRENT_SITE", "1", false},
 		}
 		for _, c := range consts {
-			if err := r.Run(ctx, stack.WPCLIBinPath, "config", "set", c.name, c.val,
-				"--type=constant", "--allow-root", "--path="+docRoot); err != nil {
+			args := []string{"config", "set", c.name, c.val,
+				"--type=constant", "--allow-root", "--path=" + docRoot}
+			if c.raw {
+				args = append(args, "--raw")
+			}
+			if err := r.Run(ctx, stack.WPCLIBinPath, args...); err != nil {
 				return fmt.Errorf("wp config set %s: %w", c.name, err)
 			}
 		}
@@ -158,14 +162,17 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 
 	if cacheMode == "lscache" {
 		fmt.Fprint(w, "  Installing LiteSpeed Cache...")
-		if err := r.Run(ctx, stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",
-			"--activate", "--allow-root", "--path="+docRoot,
-		); err != nil {
+		wpPluginArgs := []string{"plugin", "install", "litespeed-cache",
+			"--activate", "--allow-root", "--path=" + docRoot}
+		if multisite != "" {
+			wpPluginArgs = append(wpPluginArgs, "--url="+domain)
+		}
+		if err := r.Run(ctx, stack.WPCLIBinPath, wpPluginArgs...); err != nil {
 			return fmt.Errorf("install lscache: %w", err)
 		}
 		fmt.Fprintln(w, " OK")
 		fmt.Fprint(w, "  Configuring object cache...")
-		if err := configureObjectCache(ctx, r, docRoot); err != nil {
+		if err := configureObjectCache(ctx, r, docRoot, domain, multisite); err != nil {
 			return err
 		}
 		fmt.Fprintln(w, " OK")
@@ -180,7 +187,7 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 
 // configureObjectCache sets up LSCache to use Redis via Unix socket as object
 // cache and copies the object-cache.php drop-in.
-func configureObjectCache(ctx context.Context, r stack.Runner, docRoot string) error {
+func configureObjectCache(ctx context.Context, r stack.Runner, docRoot, domain, multisite string) error {
 	phpEval := `$conf = get_option('litespeed-cache-conf', array());
 if (!is_array($conf)) $conf = array();
 $conf['object'] = true;
@@ -206,9 +213,12 @@ $dat = array(
 );
 file_put_contents(WP_CONTENT_DIR . '/.litespeed_conf.dat', wp_json_encode($dat));
 `
-	if err := r.Run(ctx, stack.WPCLIBinPath, "eval", phpEval,
-		"--allow-root", "--path="+docRoot,
-	); err != nil {
+	evalArgs := []string{"eval", phpEval,
+		"--allow-root", "--path=" + docRoot}
+	if multisite != "" {
+		evalArgs = append(evalArgs, "--url="+domain)
+	}
+	if err := r.Run(ctx, stack.WPCLIBinPath, evalArgs...); err != nil {
 		return fmt.Errorf("configure object cache: %w", err)
 	}
 	// Copy object-cache.php drop-in (LSCache may not auto-create via CLI).
