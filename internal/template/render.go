@@ -51,6 +51,7 @@ type VHostData struct {
 	KeyPath          string
 	HSTS             bool
 	CacheMode        string
+	Multisite        string // "", "subdirectory", or "subdomain"
 }
 
 // Renderer lazily parses embedded templates once and caches them for reuse.

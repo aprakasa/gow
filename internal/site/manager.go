@@ -159,6 +159,7 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		KeyPath:          s.KeyPath,
 		HSTS:             s.HSTS,
 		CacheMode:        s.CacheMode,
+		Multisite:        s.Multisite,
 	}
 
 	variant := siteType(s)

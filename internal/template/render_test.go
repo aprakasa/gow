@@ -539,6 +539,36 @@ func TestRenderVHost_HTMLWithSSL(t *testing.T) {
 	}
 }
 
+func TestRenderVHost_MultisiteSubdirectory(t *testing.T) {
+	data := fixtureVHost()
+	data.Multisite = "subdirectory"
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() error = %v", err)
+	}
+	if !strings.Contains(got, "RewriteRule ^index\\.php$ - [L]") {
+		t.Error("subdirectory multisite should have multisite rewrite rules")
+	}
+	if !strings.Contains(got, "wp-(content|admin|includes)") {
+		t.Error("subdirectory multisite should rewrite wp-* paths")
+	}
+}
+
+func TestRenderVHost_MultisiteSubdomain(t *testing.T) {
+	data := fixtureVHost()
+	data.Multisite = "subdomain"
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() error = %v", err)
+	}
+	if !strings.Contains(got, "RewriteRule . /index.php [L]") {
+		t.Error("subdomain multisite should use standard rewrite rules")
+	}
+	if strings.Contains(got, "wp-(content|admin|includes)") {
+		t.Error("subdomain multisite should not have subdirectory rewrites")
+	}
+}
+
 func TestRenderVHost_PHPWithSSL(t *testing.T) {
 	data := VHostData{
 		Site:             "app.test",
