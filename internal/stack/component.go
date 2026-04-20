@@ -156,9 +156,8 @@ func (c Component) Active(ctx context.Context, r Runner) (bool, error) {
 	if c.ActiveFn == nil {
 		return false, nil
 	}
-	err := c.ActiveFn(ctx, r)
-	if err != nil {
-		return false, nil
+	if err := c.ActiveFn(ctx, r); err != nil {
+		return false, nil //nolint:nilerr // a failed check means "not active", not a bug
 	}
 	return true, nil
 }

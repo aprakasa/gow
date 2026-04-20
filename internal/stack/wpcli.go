@@ -40,7 +40,7 @@ func WPCLI() Component {
 		StatusFn: func(ctx context.Context, r Runner) (string, error) {
 			out, err := r.Output(ctx, "sh", "-c", "php "+WPCLIBinPath+" --version --allow-root 2>&1 | head -1")
 			if err != nil {
-				return "", nil
+				return "", nil //nolint:nilerr // wp-cli not installed yet
 			}
 			return strings.TrimSpace(out), nil
 		},

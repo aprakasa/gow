@@ -39,7 +39,7 @@ func Composer() Component {
 		StatusFn: func(ctx context.Context, r Runner) (string, error) {
 			out, err := r.Output(ctx, composerBinPath, "--version")
 			if err != nil {
-				return "", nil
+				return "", nil //nolint:nilerr // composer not installed yet
 			}
 			return strings.TrimSpace(out), nil
 		},
