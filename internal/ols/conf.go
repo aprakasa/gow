@@ -73,35 +73,31 @@ func (c *httpdConf) blockContains(header, needle string) bool {
 
 // insertBeforeClose inserts line (which must already include its own
 // indentation and trailing newline) immediately before the closing brace of
-// the named block. Returns false if the block is missing; otherwise marks
-// the conf dirty.
-func (c *httpdConf) insertBeforeClose(header, line string) bool {
+// the named block. No-op if the block is missing.
+func (c *httpdConf) insertBeforeClose(header, line string) {
 	_, end := c.findBlock(header)
 	if end < 0 {
-		return false
+		return
 	}
 	brace := end - 1
 	c.content = c.content[:brace] + line + c.content[brace:]
 	c.dirty = true
-	return true
 }
 
 // removeLineInBlock removes the first occurrence of line from within the
-// named block. Returns false when the block is missing or the line is not
-// present; otherwise marks the conf dirty.
-func (c *httpdConf) removeLineInBlock(header, line string) bool {
+// named block. No-op when the block is missing or the line is not present.
+func (c *httpdConf) removeLineInBlock(header, line string) {
 	s, e := c.findBlock(header)
 	if s < 0 {
-		return false
+		return
 	}
 	block := c.content[s:e]
 	replaced := strings.Replace(block, line, "", 1)
 	if replaced == block {
-		return false
+		return
 	}
 	c.content = c.content[:s] + replaced + c.content[e:]
 	c.dirty = true
-	return true
 }
 
 // removeBlock removes the entire block with the given header, including its

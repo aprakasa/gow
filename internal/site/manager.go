@@ -150,7 +150,7 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		WebRoot:          siteRoot,
 		LogDir:           "/var/log/lsws",
 		PHPVer:           s.PHPVersion,
-		Children:         int(alloc.Children),
+		Children:         alloc.Children,
 		PHPMemoryLimitMB: alloc.PHPMemoryLimitMB,
 		MemSoftMB:        alloc.MemSoftMB,
 		MemHardMB:        alloc.MemHardMB,
