@@ -124,6 +124,9 @@ func main() {
 	}
 	sslCmd.Flags().StringVar(&sSSLFlags.SSLEmail, "email", "", "Let's Encrypt registration email")
 	sslCmd.Flags().BoolVar(&sSSLFlags.SSLStaging, "staging", false, "Use Let's Encrypt staging server")
+	sslCmd.Flags().BoolVar(&sSSLFlags.SSLWildcard, "wildcard", false, "Issue wildcard cert (*.domain); requires --dns")
+	sslCmd.Flags().StringVar(&sSSLFlags.SSLDNS, "dns", "", "DNS provider for DNS-01 (cloudflare)")
+	sslCmd.Flags().BoolVar(&sSSLFlags.SSLHSTS, "hsts", false, "Emit Strict-Transport-Security header")
 	_ = sslCmd.MarkFlagRequired("email")
 
 	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd)

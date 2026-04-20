@@ -320,7 +320,14 @@ func RunSSL(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
-	if err := m.EnableSSL(d.Ctx, domain, sf.SSLEmail, sf.SSLStaging); err != nil {
+	opts := site.SSLOptions{
+		Email:    sf.SSLEmail,
+		Staging:  sf.SSLStaging,
+		Wildcard: sf.SSLWildcard,
+		DNS:      sf.SSLDNS,
+		HSTS:     sf.SSLHSTS,
+	}
+	if err := m.EnableSSL(d.Ctx, domain, opts); err != nil {
 		return err
 	}
 	fmt.Fprintf(d.Stdout, "SSL enabled for %s.\n", domain)

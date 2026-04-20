@@ -73,7 +73,7 @@ func TestEnableSSL_Success(t *testing.T) {
 		t.Fatalf("store.Add: %v", err)
 	}
 
-	if err := m.EnableSSL(ctx, "ssl.test", "admin@ssl.test", false); err != nil {
+	if err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "admin@ssl.test"}); err != nil {
 		t.Fatalf("EnableSSL() = %v", err)
 	}
 
@@ -122,7 +122,7 @@ func TestEnableSSL_Staging(t *testing.T) {
 		t.Fatalf("store.Add: %v", err)
 	}
 
-	if err := m.EnableSSL(ctx, "ssl.test", "admin@ssl.test", true); err != nil {
+	if err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "admin@ssl.test", Staging: true}); err != nil {
 		t.Fatalf("EnableSSL() = %v", err)
 	}
 
@@ -145,11 +145,142 @@ func TestEnableSSL_SiteNotFound(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManagerWithRunner(t, &recordingRunner{})
 
-	err := m.EnableSSL(ctx, "nope.test", "admin@test.com", false)
+	err := m.EnableSSL(ctx, "nope.test", SSLOptions{Email: "admin@test.com"})
 	if err == nil {
 		t.Fatal("expected error for nonexistent site")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error = %q, want 'not found'", err.Error())
+	}
+}
+
+// seedSSLSite is a small helper used by the wildcard/DNS tests. The site
+// name is fixed because every test in this group targets the same fake site.
+const sslTestSite = "ssl.test"
+
+func seedSSLSite(t *testing.T, m *Manager, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "www", sslTestSite, "htdocs"), 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir htdocs: %v", err)
+	}
+	if err := m.store.Add(state.Site{Name: sslTestSite, Type: "wp", PHPVersion: "83", Preset: "standard"}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+}
+
+// redirectDNSCredsDir points dnsCredsDir at a temp dir for the duration of
+// the test, so we can create and remove fake INI files without touching
+// /etc/gow/dns.
+func redirectDNSCredsDir(t *testing.T) string {
+	t.Helper()
+	orig := dnsCredsDir
+	tmp := t.TempDir()
+	dnsCredsDir = tmp
+	t.Cleanup(func() { dnsCredsDir = orig })
+	return tmp
+}
+
+func findCertbotCmd(t *testing.T, cmds [][]string) []string {
+	t.Helper()
+	for _, cmd := range cmds {
+		if len(cmd) > 0 && cmd[0] == "certbot" {
+			return cmd
+		}
+	}
+	t.Fatal("certbot was not invoked")
+	return nil
+}
+
+func TestEnableSSL_Wildcard_RequiresDNS(t *testing.T) {
+	ctx := context.Background()
+	m, dir := setupManagerWithRunner(t, &recordingRunner{})
+	seedSSLSite(t, m, dir)
+
+	err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "a@b.c", Wildcard: true})
+	if err == nil {
+		t.Fatal("expected error when --wildcard used without --dns")
+	}
+	if !strings.Contains(err.Error(), "requires --dns") {
+		t.Errorf("error = %q, want 'requires --dns'", err.Error())
+	}
+}
+
+func TestEnableSSL_DNS_UnsupportedProvider(t *testing.T) {
+	ctx := context.Background()
+	m, dir := setupManagerWithRunner(t, &recordingRunner{})
+	seedSSLSite(t, m, dir)
+
+	err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "a@b.c", DNS: "route53"})
+	if err == nil {
+		t.Fatal("expected error for unsupported --dns provider")
+	}
+	if !strings.Contains(err.Error(), "unsupported") {
+		t.Errorf("error = %q, want 'unsupported'", err.Error())
+	}
+}
+
+func TestEnableSSL_DNS_MissingCredsFile(t *testing.T) {
+	ctx := context.Background()
+	m, dir := setupManagerWithRunner(t, &recordingRunner{})
+	seedSSLSite(t, m, dir)
+	redirectDNSCredsDir(t) // empty dir — creds file absent
+
+	err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "a@b.c", DNS: "cloudflare"})
+	if err == nil {
+		t.Fatal("expected error when creds file missing")
+	}
+	if !strings.Contains(err.Error(), "DNS credentials") {
+		t.Errorf("error = %q, want 'DNS credentials'", err.Error())
+	}
+}
+
+func TestEnableSSL_Wildcard_Cloudflare_InvokesCertbot(t *testing.T) {
+	ctx := context.Background()
+	rr := &recordingRunner{}
+	m, dir := setupManagerWithRunner(t, rr)
+	seedSSLSite(t, m, dir)
+
+	credsDir := redirectDNSCredsDir(t)
+	credsPath := filepath.Join(credsDir, "cloudflare.ini")
+	if err := os.WriteFile(credsPath, []byte("dns_cloudflare_api_token = fake\n"), 0o600); err != nil { //nolint:gosec // test file
+		t.Fatalf("write creds: %v", err)
+	}
+
+	if err := m.EnableSSL(ctx, "ssl.test", SSLOptions{
+		Email:    "a@b.c",
+		Wildcard: true,
+		DNS:      "cloudflare",
+	}); err != nil {
+		t.Fatalf("EnableSSL() = %v", err)
+	}
+
+	cmd := findCertbotCmd(t, rr.commands)
+	all := strings.Join(cmd, " ")
+	if !strings.Contains(all, "--dns-cloudflare") {
+		t.Error("certbot should use --dns-cloudflare")
+	}
+	if !strings.Contains(all, "--dns-cloudflare-credentials "+credsPath) {
+		t.Errorf("certbot should point at creds file, got: %s", all)
+	}
+	if !strings.Contains(all, "-d ssl.test") || !strings.Contains(all, "-d *.ssl.test") {
+		t.Errorf("certbot should request apex + wildcard, got: %s", all)
+	}
+	if strings.Contains(all, "--webroot") {
+		t.Error("DNS-01 path should not fall back to --webroot")
+	}
+}
+
+func TestEnableSSL_HSTS_PersistsOnSite(t *testing.T) {
+	ctx := context.Background()
+	rr := &recordingRunner{}
+	m, dir := setupManagerWithRunner(t, rr)
+	seedSSLSite(t, m, dir)
+
+	if err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "a@b.c", HSTS: true}); err != nil {
+		t.Fatalf("EnableSSL() = %v", err)
+	}
+	got, _ := m.store.Find("ssl.test")
+	if !got.HSTS {
+		t.Error("Site.HSTS should be true after EnableSSL with HSTS: true")
 	}
 }

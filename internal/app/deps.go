@@ -40,6 +40,9 @@ type SiteFlags struct {
 	Isolate      bool   // --isolate (update only)
 	SSLEmail     string // --email (ssl only)
 	SSLStaging   bool   // --staging (ssl only)
+	SSLWildcard  bool   // --wildcard (ssl only, requires --dns)
+	SSLDNS       string // --dns (ssl only, currently: "cloudflare")
+	SSLHSTS      bool   // --hsts (ssl only)
 }
 
 // StackFlags holds per-command flags for stack operations.
