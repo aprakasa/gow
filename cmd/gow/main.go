@@ -48,6 +48,7 @@ func main() {
 	createCmd.Flags().StringVar(&sCreateFlags.Preset, "tune", "blog", "Tuning template (blog, woocommerce, custom)")
 	createCmd.Flags().UintVar(&sCreateFlags.PHPMemory, "php-memory", 0, "PHP memory limit in MB (custom only)")
 	createCmd.Flags().UintVar(&sCreateFlags.WorkerBudget, "worker-budget", 0, "Worker budget in MB (custom only)")
+	createCmd.Flags().BoolVar(&sCreateFlags.NoCache, "no-cache", false, "Disable LSCache page cache + plugin (wp only)")
 
 	var sUpdateFlags app.SiteFlags
 	updateCmd := &cobra.Command{
