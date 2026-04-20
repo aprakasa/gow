@@ -173,13 +173,39 @@ func TestRenderVHostContainsSecurityContexts(t *testing.T) {
 	}
 }
 
-func TestRenderVHostContainsCacheRoot(t *testing.T) {
-	got, err := RenderVHost("wp", fixtureVHost())
+func TestRenderVHost_LSCacheMode(t *testing.T) {
+	data := fixtureVHost()
+	data.CacheMode = "lscache"
+	got, err := RenderVHost("wp", data)
 	if err != nil {
 		t.Fatalf("RenderVHost() error = %v", err)
 	}
 	if !strings.Contains(got, "cacheroot                 /var/cache/lshttpd/example.com") {
-		t.Error("output should contain cacheroot for the site")
+		t.Error("lscache mode should emit cacheroot")
+	}
+	if !strings.Contains(got, "CacheLookup on") {
+		t.Error("lscache mode should emit CacheLookup on in rewrite rules")
+	}
+	if !strings.Contains(got, "enableCache           1") {
+		t.Error("lscache mode should emit cache block with enableCache 1")
+	}
+}
+
+func TestRenderVHost_CacheModeNone(t *testing.T) {
+	data := fixtureVHost()
+	data.CacheMode = "none"
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() error = %v", err)
+	}
+	if strings.Contains(got, "cacheroot") {
+		t.Error("none mode should omit cacheroot")
+	}
+	if strings.Contains(got, "CacheLookup on") {
+		t.Error("none mode should omit CacheLookup")
+	}
+	if strings.Contains(got, "enableCache") {
+		t.Error("none mode should omit cache block")
 	}
 }
 

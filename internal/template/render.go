@@ -31,6 +31,11 @@ type ExtAppData struct {
 // The allocator-derived fields (Children, PHPMemoryLimitMB, MemSoftMB,
 // MemHardMB) populate the extprocessor block so each site gets its own
 // resource-isolated LSPHP cluster.
+//
+// CacheMode controls LSCache page-cache emission in vhost-wp.conf.tmpl:
+// "lscache" (default for WP) emits CacheLookup on + a cache block so OLS
+// honors the headers written by the litespeed-cache plugin. "none" omits
+// those directives.
 type VHostData struct {
 	Site             string
 	Domain           string
@@ -44,6 +49,7 @@ type VHostData struct {
 	SSLEnabled       bool
 	CertPath         string
 	KeyPath          string
+	CacheMode        string
 }
 
 // Renderer lazily parses embedded templates once and caches them for reuse.
