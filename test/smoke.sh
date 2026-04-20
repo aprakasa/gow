@@ -3,14 +3,16 @@
 # Run: ./test/smoke.sh
 set -euo pipefail
 
-image="gow-smoke:$RANDOM"
-trap "docker rm -f smoke-$image > /dev/null 2>&1 || true; docker rmi $image > /dev/null 2>&1 || true" EXIT
+tag="gow-smoke-$RANDOM"
+image="gow-smoke:$tag"
+container="smoke-$tag"
+trap "docker rm -f $container > /dev/null 2>&1 || true; docker rmi $image > /dev/null 2>&1 || true" EXIT
 
 echo "==> Building smoke image..."
 docker build -f Dockerfile.smoke -t "$image" .
 
 echo "==> Running smoke tests..."
-docker run --name "smoke-$image" "$image" bash -c '
+docker run --name "$container" "$image" bash -c '
 set -e
 errors=0
 
