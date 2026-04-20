@@ -49,19 +49,19 @@ func (m *Manager) Update(ctx context.Context, name, phpVersion, preset string, c
 			if err := m.runner.Run(ctx, "useradd", "--system", "--no-create-home",
 				"--shell", "/usr/sbin/nologin", s.UnixUser); err != nil {
 				// Roll back the UnixUser we just set in the store.
-				m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
+				_ = m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 				return fmt.Errorf("site: update %s: create user: %w", name, err)
 			}
 		}
 		siteRoot := filepath.Join(m.webRoot, name)
 		if err := m.runner.Run(ctx, "chown", "-R", s.UnixUser+":"+s.UnixUser, siteRoot); err != nil {
 			_ = m.runner.Run(context.Background(), "userdel", s.UnixUser)
-			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
+			_ = m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: chown: %w", name, err)
 		}
 		if err := m.runner.Run(ctx, "usermod", "-aG", "redis", s.UnixUser); err != nil {
 			_ = m.runner.Run(context.Background(), "userdel", s.UnixUser)
-			m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
+			_ = m.store.Update(name, func(si *state.Site) { si.UnixUser = "" })
 			return fmt.Errorf("site: update %s: add to redis group: %w", name, err)
 		}
 
