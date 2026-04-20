@@ -50,8 +50,6 @@ func promptDefault(w io.Writer, label, def string) string {
 	fmt.Fprintf(w, "  %s [%s]: ", label, def)
 	var input string
 	if _, err := fmt.Scanln(&input); err != nil && !errors.Is(err, io.EOF) {
-		// On unexpected read error, fall through to default rather than
-		// fail the install — the caller already chose interactive mode.
 		return def
 	}
 	input = strings.TrimSpace(input)
@@ -61,7 +59,7 @@ func promptDefault(w io.Writer, label, def string) string {
 	return input
 }
 
-func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMode string) error {
+func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMode, multisite string) error {
 	docRoot := filepath.Join(webRoot, domain, "htdocs")
 	r := stack.NewShellRunner()
 
@@ -109,17 +107,55 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("wp config create: %w", err)
 	}
 
-	// Install WordPress.
+	// Add multisite constants to wp-config.php.
+	if multisite != "" {
+		subdomain := "false"
+		if multisite == "subdomain" {
+			subdomain = "true"
+		}
+		consts := []struct{ name, val string }{
+			{"MULTISITE", "true"},
+			{"SUBDOMAIN_INSTALL", subdomain},
+			{"DOMAIN_CURRENT_SITE", "'" + domain + "'"},
+			{"PATH_CURRENT_SITE", "'/'"},
+			{"SITE_ID_CURRENT_SITE", "1"},
+			{"BLOG_ID_CURRENT_SITE", "1"},
+		}
+		for _, c := range consts {
+			if err := r.Run(ctx, stack.WPCLIBinPath, "config", "set", c.name, c.val,
+				"--type=constant", "--allow-root", "--path="+docRoot); err != nil {
+				return fmt.Errorf("wp config set %s: %w", c.name, err)
+			}
+		}
+	}
+
+	// Install WordPress (single or multisite).
 	fmt.Fprint(w, "  Installing WordPress...")
-	if err := r.Run(ctx, stack.WPCLIBinPath, "core", "install",
-		"--url="+domain, "--title="+domain,
-		"--admin_user="+adminUser, "--admin_password="+adminPass,
-		"--admin_email="+adminEmail,
-		"--allow-root", "--path="+docRoot,
-	); err != nil {
-		return fmt.Errorf("wp core install: %w", err)
+	if multisite != "" {
+		msArgs := []string{"core", "multisite-install",
+			"--url=" + domain, "--title=" + domain,
+			"--admin_user=" + adminUser, "--admin_password=" + adminPass,
+			"--admin_email=" + adminEmail,
+			"--allow-root", "--path=" + docRoot,
+		}
+		if multisite == "subdomain" {
+			msArgs = append(msArgs, "--subdomains")
+		}
+		if err := r.Run(ctx, stack.WPCLIBinPath, msArgs...); err != nil {
+			return fmt.Errorf("wp core multisite-install: %w", err)
+		}
+	} else {
+		if err := r.Run(ctx, stack.WPCLIBinPath, "core", "install",
+			"--url="+domain, "--title="+domain,
+			"--admin_user="+adminUser, "--admin_password="+adminPass,
+			"--admin_email="+adminEmail,
+			"--allow-root", "--path="+docRoot,
+		); err != nil {
+			return fmt.Errorf("wp core install: %w", err)
+		}
 	}
 	fmt.Fprintln(w, " OK")
+
 	if cacheMode == "lscache" {
 		fmt.Fprint(w, "  Installing LiteSpeed Cache...")
 		if err := r.Run(ctx, stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",

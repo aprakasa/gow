@@ -61,7 +61,7 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 		if err != nil {
 			return err
 		}
-		if err := m.Create(d.Ctx, domain, sf.SiteType, "", "standard", "", nil); err != nil {
+		if err := m.Create(d.Ctx, domain, sf.SiteType, "", "standard", "", "", nil); err != nil {
 			return err
 		}
 		fmt.Fprintf(d.Stdout, "Site %s created.\n", domain)
@@ -95,11 +95,11 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
-	if err := m.Create(d.Ctx, domain, sf.SiteType, phpVer, preset, cacheMode, custom); err != nil {
+	if err := m.Create(d.Ctx, domain, sf.SiteType, phpVer, preset, cacheMode, sf.Multisite, custom); err != nil {
 		return err
 	}
 	if sf.SiteType == "wp" {
-		if err := d.WPInstall(domain, cfg.WebRoot, cacheMode); err != nil {
+		if err := d.WPInstall(domain, cfg.WebRoot, cacheMode, sf.Multisite); err != nil {
 			return err
 		}
 	} else {

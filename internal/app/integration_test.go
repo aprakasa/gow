@@ -76,7 +76,7 @@ func newTestEnv(t *testing.T) *testEnv {
 			PHPAvailable: func(ver string) bool {
 				return ver == "81" || ver == "83"
 			},
-			WPInstall: func(string, string, string) error {
+			WPInstall: func(string, string, string, string) error {
 				return nil
 			},
 			DBCleanup: func(string) error {
