@@ -23,6 +23,7 @@ type stackOp struct {
 	service  bool // skip components without service functions (HasService)
 }
 
+// StackOp* declare the supported stack lifecycle operations the CLI can run.
 var (
 	StackOpInstall = stackOp{
 		name:     "install",

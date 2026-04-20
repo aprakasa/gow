@@ -214,8 +214,8 @@ func siteType(s state.Site) string {
 	return s.Type
 }
 
-// SiteUserName returns the system user name for a site domain.
-func SiteUserName(domain string) string {
+// UserName returns the system user name for a site domain.
+func UserName(domain string) string {
 	return "site-" + domain
 }
 

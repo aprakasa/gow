@@ -46,7 +46,7 @@ func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset
 		CreatedAt:    time.Now().UTC(),
 	}
 	if needsIsolation(siteType) {
-		site.UnixUser = SiteUserName(name)
+		site.UnixUser = UserName(name)
 	}
 	if err := m.store.Add(site); err != nil {
 		return fmt.Errorf("site: create %s: %w", name, err)

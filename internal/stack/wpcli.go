@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// WPCLIBinPath is the on-disk location of the wp-cli binary.
 const WPCLIBinPath = "/usr/local/bin/wp"
 
 // WPCLI returns the WP-CLI stack component.

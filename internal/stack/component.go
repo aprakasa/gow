@@ -30,6 +30,7 @@ type Component struct {
 	ActiveFn func(context.Context, Runner) error
 }
 
+// Install runs the component's InstallFn if set.
 func (c Component) Install(ctx context.Context, r Runner) error {
 	if c.InstallFn == nil {
 		return nil
@@ -40,6 +41,7 @@ func (c Component) Install(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Upgrade runs the component's UpgradeFn if set.
 func (c Component) Upgrade(ctx context.Context, r Runner) error {
 	if c.UpgradeFn == nil {
 		return nil
@@ -50,6 +52,7 @@ func (c Component) Upgrade(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Remove runs the component's RemoveFn if set (apt-get remove; keeps configs).
 func (c Component) Remove(ctx context.Context, r Runner) error {
 	if c.RemoveFn == nil {
 		return nil
@@ -60,6 +63,7 @@ func (c Component) Remove(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Purge runs the component's PurgeFn if set (apt-get purge + deep clean).
 func (c Component) Purge(ctx context.Context, r Runner) error {
 	if c.PurgeFn == nil {
 		return nil
@@ -70,6 +74,7 @@ func (c Component) Purge(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Verify runs the component's VerifyFn.
 func (c Component) Verify(ctx context.Context, r Runner) error {
 	if err := c.VerifyFn(ctx, r); err != nil {
 		return fmt.Errorf("stack: verify %s: %w", c.Name, err)
@@ -77,6 +82,7 @@ func (c Component) Verify(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Status returns the component's StatusFn output, or empty string if unset.
 func (c Component) Status(ctx context.Context, r Runner) (string, error) {
 	if c.StatusFn == nil {
 		return "", nil
@@ -84,6 +90,7 @@ func (c Component) Status(ctx context.Context, r Runner) (string, error) {
 	return c.StatusFn(ctx, r)
 }
 
+// Start runs the component's StartFn if set.
 func (c Component) Start(ctx context.Context, r Runner) error {
 	if c.StartFn == nil {
 		return nil
@@ -94,6 +101,7 @@ func (c Component) Start(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Stop runs the component's StopFn if set.
 func (c Component) Stop(ctx context.Context, r Runner) error {
 	if c.StopFn == nil {
 		return nil
@@ -104,6 +112,7 @@ func (c Component) Stop(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Restart runs the component's RestartFn if set.
 func (c Component) Restart(ctx context.Context, r Runner) error {
 	if c.RestartFn == nil {
 		return nil
@@ -114,6 +123,7 @@ func (c Component) Restart(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Reload runs the component's ReloadFn if set.
 func (c Component) Reload(ctx context.Context, r Runner) error {
 	if c.ReloadFn == nil {
 		return nil
@@ -124,6 +134,7 @@ func (c Component) Reload(ctx context.Context, r Runner) error {
 	return nil
 }
 
+// Migrate runs the component's MigrateFn to move to the target version.
 func (c Component) Migrate(ctx context.Context, r Runner, target string) error {
 	if c.MigrateFn == nil {
 		return fmt.Errorf("stack: migrate not supported for %s", c.Name)

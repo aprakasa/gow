@@ -1,3 +1,4 @@
+// Package ols manages OpenLiteSpeed configuration and lifecycle.
 package ols
 
 import (
@@ -233,16 +234,25 @@ func OpenHttpd(path string) (*HttpdConf, error) {
 	return &HttpdConf{inner: c}, nil
 }
 
+// Save flushes pending edits to disk (no-op if nothing changed).
 func (h *HttpdConf) Save() error { return h.inner.save() }
 
+// RegisterVHost adds the virtualHost block and default listener map entry.
 func (h *HttpdConf) RegisterVHost(siteName, vhRoot, configFile string) {
 	h.inner.ensureVHostBlock(siteName, vhRoot, configFile)
 	h.inner.ensureListenerMap("Default", siteName)
 }
 
-func (h *HttpdConf) EnsureSSLListener()                     { h.inner.ensureSSLListener() }
-func (h *HttpdConf) SetSSLListenerCerts(cert, key string)   { h.inner.setSSLListenerCerts(cert, key) }
-func (h *HttpdConf) AddSSLMapEntry(siteName string)         { h.inner.ensureListenerMap("SSL", siteName) }
+// EnsureSSLListener adds the SSL listener block if missing.
+func (h *HttpdConf) EnsureSSLListener() { h.inner.ensureSSLListener() }
+
+// SetSSLListenerCerts sets the default SSL listener's cert and key paths.
+func (h *HttpdConf) SetSSLListenerCerts(cert, key string) { h.inner.setSSLListenerCerts(cert, key) }
+
+// AddSSLMapEntry adds the site to the SSL listener's virtualHost map.
+func (h *HttpdConf) AddSSLMapEntry(siteName string) { h.inner.ensureListenerMap("SSL", siteName) }
+
+// SetVHostSSL installs a vhssl block on the site's virtualHost for SNI.
 func (h *HttpdConf) SetVHostSSL(siteName, cert, key string) { h.inner.setVHostSSL(siteName, cert, key) }
 
 // setVHostSSL inserts a vhssl block into the site's virtualHost. No-op when

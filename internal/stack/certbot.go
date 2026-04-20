@@ -1,3 +1,5 @@
+// Package stack defines installable LiteSpeed/LSPHP/MariaDB components and
+// their lifecycle hooks (install, upgrade, start, status, …) used by the CLI.
 package stack
 
 import (

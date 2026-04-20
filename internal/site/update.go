@@ -36,7 +36,7 @@ func (m *Manager) Update(ctx context.Context, name, phpVersion, preset string, c
 			s.CustomPreset = custom
 		}
 		if isolate {
-			s.UnixUser = SiteUserName(name)
+			s.UnixUser = UserName(name)
 		}
 	}); err != nil {
 		return fmt.Errorf("site: update %s: %w", name, err)
