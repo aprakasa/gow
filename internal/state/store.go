@@ -13,6 +13,13 @@ import (
 )
 
 // Site represents a managed WordPress site in the persistent registry.
+//
+// CacheMode controls the LSCache wiring for WP sites:
+//   - "lscache" (default): OLS page cache + litespeed-cache plugin + Redis object cache
+//   - "none": no plugin, no page-cache directives
+//
+// For non-wp sites, CacheMode is always empty. Sites loaded from pre-CacheMode
+// state default to "lscache" in Open for backward compatibility.
 type Site struct {
 	Name         string        `json:"name"`
 	Type         string        `json:"type"`
@@ -24,6 +31,7 @@ type Site struct {
 	SSLEnabled   bool          `json:"ssl_enabled"`
 	CertPath     string        `json:"cert_path,omitempty"`
 	KeyPath      string        `json:"key_path,omitempty"`
+	CacheMode    string        `json:"cache_mode,omitempty"`
 	CreatedAt    time.Time     `json:"created_at"`
 }
 
@@ -76,8 +84,21 @@ func Open(path string) (*Store, error) {
 	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return nil, fmt.Errorf("state: parse %s: %w", path, err)
 	}
+	for i := range wrapper.Sites {
+		// Migrate pre-CacheMode WP sites: they were created with the plugin
+		// auto-installed, so the compatible default is "lscache".
+		if wrapper.Sites[i].CacheMode == "" && siteIsWP(wrapper.Sites[i]) {
+			wrapper.Sites[i].CacheMode = "lscache"
+		}
+	}
 	s.sites = wrapper.Sites
 	return s, nil
+}
+
+// siteIsWP reports whether a site's effective type is "wp". Sites created
+// before the Type field was added have Type == "" and are treated as wp.
+func siteIsWP(s Site) bool {
+	return s.Type == "" || s.Type == "wp"
 }
 
 // Sites returns a copy of the current site list.

@@ -362,6 +362,58 @@ func TestSiteJSON_SSLEnabled(t *testing.T) {
 	}
 }
 
+// --- CacheMode migration ---
+
+func TestOpen_MigratesEmptyCacheModeForWP(t *testing.T) {
+	path := tempStorePath(t)
+	// Write a pre-CacheMode state file: WP site without cache_mode.
+	raw := `{
+  "sites": [
+    {"name": "legacy-wp.test", "type": "wp", "php_version": "83", "preset": "standard", "created_at": "2026-04-13T22:00:00Z"},
+    {"name": "legacy-default.test", "type": "", "php_version": "83", "preset": "standard", "created_at": "2026-04-13T22:00:00Z"},
+    {"name": "legacy-html.test", "type": "html", "created_at": "2026-04-13T22:00:00Z"},
+    {"name": "legacy-php.test", "type": "php", "php_version": "83", "preset": "standard", "created_at": "2026-04-13T22:00:00Z"}
+  ]
+}`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil { //nolint:gosec // test file
+		t.Fatalf("write: %v", err)
+	}
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	wp, _ := s.Find("legacy-wp.test")
+	if wp.CacheMode != "lscache" {
+		t.Errorf("legacy wp CacheMode = %q, want lscache", wp.CacheMode)
+	}
+	def, _ := s.Find("legacy-default.test")
+	if def.CacheMode != "lscache" {
+		t.Errorf("legacy default-typed site CacheMode = %q, want lscache", def.CacheMode)
+	}
+	html, _ := s.Find("legacy-html.test")
+	if html.CacheMode != "" {
+		t.Errorf("legacy html CacheMode = %q, want empty", html.CacheMode)
+	}
+	php, _ := s.Find("legacy-php.test")
+	if php.CacheMode != "" {
+		t.Errorf("legacy php CacheMode = %q, want empty", php.CacheMode)
+	}
+}
+
+func TestOpen_PreservesExplicitCacheModeNone(t *testing.T) {
+	path := tempStorePath(t)
+	raw := `{"sites":[{"name":"x.test","type":"wp","php_version":"83","preset":"standard","cache_mode":"none","created_at":"2026-04-13T22:00:00Z"}]}`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil { //nolint:gosec // test file
+		t.Fatalf("write: %v", err)
+	}
+	s, _ := Open(path)
+	got, _ := s.Find("x.test")
+	if got.CacheMode != "none" {
+		t.Errorf("explicit CacheMode preserved as %q, want none", got.CacheMode)
+	}
+}
+
 // --- Delete propagation ---
 
 func TestSaveAfterRemove(t *testing.T) {
