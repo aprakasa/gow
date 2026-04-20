@@ -96,7 +96,7 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 		if err := m.runner.Run(ctx, "mariadb", "-e", sql); err != nil {
 			return fmt.Errorf("site: restore %s: create db: %w", name, err)
 		}
-		if err := m.runner.Run(ctx, "bash", "-c", fmt.Sprintf("mariadb %s < %s", qDB, dbDump)); err != nil {
+		if err := m.runner.Run(ctx, "bash", "-c", fmt.Sprintf("mariadb -D %s < %s", dbName, dbDump)); err != nil {
 			return fmt.Errorf("site: restore %s: import db: %w", name, err)
 		}
 

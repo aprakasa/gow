@@ -81,7 +81,7 @@ func (m *Manager) Clone(ctx context.Context, src, dst string) error {
 	}
 
 	// Import dump into destination database.
-	if err := m.runner.Run(ctx, "bash", "-c", fmt.Sprintf("mariadb %s < %s", qDB, tmpDump.Name())); err != nil {
+	if err := m.runner.Run(ctx, "bash", "-c", fmt.Sprintf("mariadb -D %s < %s", dstDB, tmpDump.Name())); err != nil {
 		return fmt.Errorf("site: clone %s → %s: import db: %w", src, dst, err)
 	}
 
