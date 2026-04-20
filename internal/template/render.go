@@ -49,6 +49,7 @@ type VHostData struct {
 	SSLEnabled       bool
 	CertPath         string
 	KeyPath          string
+	HSTS             bool
 	CacheMode        string
 }
 

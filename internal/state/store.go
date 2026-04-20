@@ -31,6 +31,7 @@ type Site struct {
 	SSLEnabled   bool          `json:"ssl_enabled"`
 	CertPath     string        `json:"cert_path,omitempty"`
 	KeyPath      string        `json:"key_path,omitempty"`
+	HSTS         bool          `json:"hsts,omitempty"`
 	CacheMode    string        `json:"cache_mode,omitempty"`
 	CreatedAt    time.Time     `json:"created_at"`
 }

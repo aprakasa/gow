@@ -157,6 +157,7 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		SSLEnabled:       s.SSLEnabled,
 		CertPath:         s.CertPath,
 		KeyPath:          s.KeyPath,
+		HSTS:             s.HSTS,
 		CacheMode:        s.CacheMode,
 	}
 

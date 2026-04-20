@@ -460,6 +460,39 @@ func TestRenderVHost_WPWithSSL(t *testing.T) {
 	}
 }
 
+func TestRenderVHost_HSTSWithSSL(t *testing.T) {
+	data := VHostData{
+		Site:       "blog.test",
+		Domain:     "blog.test",
+		WebRoot:    "/var/www/blog.test",
+		LogDir:     "/var/log/lsws",
+		PHPVer:     "83",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/blog.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/blog.test/privkey.pem",
+		HSTS:       true,
+	}
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() = %v", err)
+	}
+	if !strings.Contains(got, "Strict-Transport-Security: max-age=31536000") {
+		t.Error("HSTS + SSL should emit Strict-Transport-Security header")
+	}
+}
+
+func TestRenderVHost_HSTSWithoutSSLSuppressed(t *testing.T) {
+	data := fixtureVHost()
+	data.HSTS = true // HSTS set but no SSL — header must not appear.
+	got, err := RenderVHost("wp", data)
+	if err != nil {
+		t.Fatalf("RenderVHost() = %v", err)
+	}
+	if strings.Contains(got, "Strict-Transport-Security") {
+		t.Error("HSTS header must not be emitted without SSL")
+	}
+}
+
 func TestRenderVHost_WPNoSSL(t *testing.T) {
 	data := VHostData{
 		Site:             "blog.test",

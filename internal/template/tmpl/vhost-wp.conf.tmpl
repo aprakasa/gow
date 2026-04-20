@@ -7,6 +7,10 @@ enableGzip                1
   certChain                1
 }
 
+{{end}}{{if and .SSLEnabled .HSTS}}extraHeaders              <<<END
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+END
+
 {{end}}
 index  {
   useServer               0
