@@ -61,7 +61,7 @@ func promptDefault(w io.Writer, label, def string) string {
 	return input
 }
 
-func installWordPress(w io.Writer, ctx context.Context, domain, webRoot string) error {
+func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMode string) error {
 	docRoot := filepath.Join(webRoot, domain, "htdocs")
 	r := stack.NewShellRunner()
 
@@ -120,18 +120,20 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot string) 
 		return fmt.Errorf("wp core install: %w", err)
 	}
 	fmt.Fprintln(w, " OK")
-	fmt.Fprint(w, "  Installing LiteSpeed Cache...")
-	if err := r.Run(ctx, stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",
-		"--activate", "--allow-root", "--path="+docRoot,
-	); err != nil {
-		return fmt.Errorf("install lscache: %w", err)
+	if cacheMode == "lscache" {
+		fmt.Fprint(w, "  Installing LiteSpeed Cache...")
+		if err := r.Run(ctx, stack.WPCLIBinPath, "plugin", "install", "litespeed-cache",
+			"--activate", "--allow-root", "--path="+docRoot,
+		); err != nil {
+			return fmt.Errorf("install lscache: %w", err)
+		}
+		fmt.Fprintln(w, " OK")
+		fmt.Fprint(w, "  Configuring object cache...")
+		if err := configureObjectCache(ctx, r, docRoot); err != nil {
+			return err
+		}
+		fmt.Fprintln(w, " OK")
 	}
-	fmt.Fprintln(w, " OK")
-	fmt.Fprint(w, "  Configuring object cache...")
-	if err := configureObjectCache(ctx, r, docRoot); err != nil {
-		return err
-	}
-	fmt.Fprintln(w, " OK")
 
 	fmt.Fprintf(w, "\n  URL:      http://%s\n", domain)
 	fmt.Fprintf(w, "  Username: %s\n", adminUser)

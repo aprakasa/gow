@@ -34,6 +34,7 @@ type SiteFlags struct {
 	Preset       string // --tune (blog, woocommerce, custom)
 	PHPMemory    uint   // --php-memory
 	WorkerBudget uint   // --worker-budget
+	NoCache      bool   // --no-cache (create only, wp only: disable LSCache)
 	Verbose      bool   // --verbose (info only)
 	NoPrompt     bool   // --no-prompt (delete only)
 	Isolate      bool   // --isolate (update only)
@@ -70,7 +71,7 @@ type Deps struct {
 	NewRunner    func() stack.Runner
 	InstalledPHP func() []string
 	PHPAvailable func(string) bool
-	WPInstall    func(domain, webRoot string) error
+	WPInstall    func(domain, webRoot, cacheMode string) error
 	DBCleanup    func(domain string) error
 }
 
@@ -88,8 +89,8 @@ func DefaultDeps() Deps {
 		PHPAvailable: phpVersionInstalled,
 	}
 	d.DBCleanup = func(domain string) error { return dropSiteDB(d.Ctx, domain) }
-	d.WPInstall = func(domain, webRoot string) error {
-		return installWordPress(d.Stdout, d.Ctx, domain, webRoot)
+	d.WPInstall = func(domain, webRoot, cacheMode string) error {
+		return installWordPress(d.Stdout, d.Ctx, domain, webRoot, cacheMode)
 	}
 	return d
 }

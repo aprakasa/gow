@@ -18,13 +18,27 @@ import (
 // rejected early. When preset is "custom", custom must be non-nil with both
 // PHPMemoryMB and WorkerBudgetMB > 0.
 //
+// cacheMode controls LSCache wiring for WP sites: "lscache" (default) or
+// "none". For non-wp types it must be empty. The caller resolves the default.
+//
 // On failure after the state entry is added, every side effect (system user,
 // docroot, OLS vhost dir) is undone via a deferred rollback.
-func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset string, custom *state.CustomPreset) error {
+func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset, cacheMode string, custom *state.CustomPreset) error {
 	switch siteType {
 	case "html", "php", "wp":
 	default:
 		return fmt.Errorf("site: create %s: invalid type %q (html, php, wp)", name, siteType)
+	}
+
+	switch cacheMode {
+	case "":
+		// ok for any type
+	case "lscache", "none":
+		if siteType != "wp" {
+			return fmt.Errorf("site: create %s: cache mode %q only valid for --type wp", name, cacheMode)
+		}
+	default:
+		return fmt.Errorf("site: create %s: invalid cache mode %q (lscache, none)", name, cacheMode)
 	}
 
 	if preset == "custom" {
@@ -43,6 +57,7 @@ func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset
 		PHPVersion:   phpVersion,
 		Preset:       preset,
 		CustomPreset: custom,
+		CacheMode:    cacheMode,
 		CreatedAt:    time.Now().UTC(),
 	}
 	if needsIsolation(siteType) {
