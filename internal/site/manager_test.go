@@ -274,7 +274,7 @@ func TestCreate_AddsSiteAndReconciles(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -298,7 +298,7 @@ func TestCreate_RegistersVirtualHostInHttpdConfig(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -315,7 +315,7 @@ func TestCreate_CreatesDocRoot(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -333,10 +333,10 @@ func TestCreate_DuplicateReturnsError(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("first Create() = %v", err)
 	}
-	err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil)
+	err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil)
 	if err == nil {
 		t.Fatal("duplicate Create should return error")
 	}
@@ -346,7 +346,7 @@ func TestCreate_InvalidPresetReturnsError(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	err := m.Create(ctx, "blog.test", "wp", "83", "nonexistent", "", nil)
+	err := m.Create(ctx, "blog.test", "wp", "83", "nonexistent", "", "", nil)
 	if err == nil {
 		t.Fatal("invalid preset should return error")
 	}
@@ -359,7 +359,7 @@ func TestDelete_RemovesSiteAndReconciles(t *testing.T) {
 	m, _ := setupManager(t)
 
 	// Create first, then delete.
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Delete(ctx, "blog.test"); err != nil {
@@ -376,7 +376,7 @@ func TestDelete_UnregistersVirtualHostFromHttpdConfig(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Delete(ctx, "blog.test"); err != nil {
@@ -406,7 +406,7 @@ func TestDelete_RemovesSiteRoot(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -429,7 +429,7 @@ func TestDelete_RemovesSiteRoot(t *testing.T) {
 func TestUpdate_ChangesPHPVersion(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Update(ctx, "blog.test", "82", "", nil, false); err != nil {
@@ -444,7 +444,7 @@ func TestUpdate_ChangesPHPVersion(t *testing.T) {
 func TestUpdate_ChangesPreset(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "shop.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "shop.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Update(ctx, "shop.test", "", "woocommerce", nil, false); err != nil {
@@ -468,7 +468,7 @@ func TestUpdate_NotFoundReturnsError(t *testing.T) {
 func TestUpdate_InvalidPresetReturnsError(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	err := m.Update(ctx, "blog.test", "", "nonexistent", nil, false)
@@ -485,7 +485,7 @@ func TestUpdate_ToCustomPreset(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
 
-	if err := m.Create(ctx, "shop.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "shop.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -511,7 +511,7 @@ func TestUpdate_FromCustomToNamed(t *testing.T) {
 	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
-	if err := m.Create(ctx, "blog.test", "wp", "83", "custom", "", custom); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "custom", "", "", custom); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -535,7 +535,7 @@ func TestCreate_CustomPreset(t *testing.T) {
 	m, _ := setupManager(t)
 
 	custom := &state.CustomPreset{PHPMemoryMB: 320, WorkerBudgetMB: 160}
-	if err := m.Create(ctx, "custom.test", "wp", "83", "custom", "", custom); err != nil {
+	if err := m.Create(ctx, "custom.test", "wp", "83", "custom", "", "", custom); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 
@@ -562,7 +562,7 @@ func TestCreate_CustomPreset(t *testing.T) {
 func TestOffline_SetsMaintenanceAndReconciles(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Offline(ctx, "blog.test"); err != nil {
@@ -577,7 +577,7 @@ func TestOffline_SetsMaintenanceAndReconciles(t *testing.T) {
 func TestOnline_ClearsMaintenanceAndReconciles(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	if err := m.Offline(ctx, "blog.test"); err != nil {
@@ -699,7 +699,7 @@ func TestReconcile_MaintenanceMode(t *testing.T) {
 func TestCreate_HTMLSite(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "static.test", "html", "", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "static.test", "html", "", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create(html) = %v", err)
 	}
 	got, _ := m.store.Find("static.test")
@@ -714,7 +714,7 @@ func TestCreate_HTMLSite(t *testing.T) {
 func TestCreate_PHPSite(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "app.test", "php", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "app.test", "php", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create(php) = %v", err)
 	}
 	got, _ := m.store.Find("app.test")
@@ -726,7 +726,7 @@ func TestCreate_PHPSite(t *testing.T) {
 func TestCreate_CacheModeStoredOnSite(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "fast.test", "wp", "83", "standard", "lscache", nil); err != nil {
+	if err := m.Create(ctx, "fast.test", "wp", "83", "standard", "lscache", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	got, _ := m.store.Find("fast.test")
@@ -738,7 +738,7 @@ func TestCreate_CacheModeStoredOnSite(t *testing.T) {
 func TestCreate_CacheModeNone(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "plain.test", "wp", "83", "standard", "none", nil); err != nil {
+	if err := m.Create(ctx, "plain.test", "wp", "83", "standard", "none", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	got, _ := m.store.Find("plain.test")
@@ -750,7 +750,7 @@ func TestCreate_CacheModeNone(t *testing.T) {
 func TestCreate_CacheModeRejectedForNonWP(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	err := m.Create(ctx, "app.test", "php", "83", "standard", "lscache", nil)
+	err := m.Create(ctx, "app.test", "php", "83", "standard", "lscache", "", nil)
 	if err == nil {
 		t.Fatal("expected error when cache mode is set for non-wp type")
 	}
@@ -762,7 +762,7 @@ func TestCreate_CacheModeRejectedForNonWP(t *testing.T) {
 func TestCreate_InvalidCacheMode(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	err := m.Create(ctx, "bad.test", "wp", "83", "standard", "bogus", nil)
+	err := m.Create(ctx, "bad.test", "wp", "83", "standard", "bogus", "", nil)
 	if err == nil {
 		t.Fatal("expected error for invalid cache mode")
 	}
@@ -774,7 +774,7 @@ func TestCreate_InvalidCacheMode(t *testing.T) {
 func TestCreate_SetsUnixUser(t *testing.T) {
 	ctx := context.Background()
 	m, _ := setupManager(t)
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
@@ -787,7 +787,7 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 	ctx := context.Background()
 	m, dir := setupManager(t)
 
-	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", nil); err != nil {
+	if err := m.Create(ctx, "blog.test", "wp", "83", "standard", "", "", nil); err != nil {
 		t.Fatalf("Create() = %v", err)
 	}
 

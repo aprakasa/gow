@@ -23,7 +23,7 @@ import (
 //
 // On failure after the state entry is added, every side effect (system user,
 // docroot, OLS vhost dir) is undone via a deferred rollback.
-func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset, cacheMode string, custom *state.CustomPreset) error {
+func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset, cacheMode, multisite string, custom *state.CustomPreset) error {
 	switch siteType {
 	case "html", "php", "wp":
 	default:
@@ -39,6 +39,17 @@ func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset
 		}
 	default:
 		return fmt.Errorf("site: create %s: invalid cache mode %q (lscache, none)", name, cacheMode)
+	}
+
+	switch multisite {
+	case "":
+		// single site (default)
+	case "subdirectory", "subdomain":
+		if siteType != "wp" {
+			return fmt.Errorf("site: create %s: multisite only valid for --type wp", name)
+		}
+	default:
+		return fmt.Errorf("site: create %s: invalid multisite %q (subdirectory, subdomain)", name, multisite)
 	}
 
 	if preset == "custom" {
@@ -58,6 +69,7 @@ func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset
 		Preset:       preset,
 		CustomPreset: custom,
 		CacheMode:    cacheMode,
+		Multisite:    multisite,
 		CreatedAt:    time.Now().UTC(),
 	}
 	if needsIsolation(siteType) {

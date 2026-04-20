@@ -49,7 +49,7 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 	st := siteType(origSite)
 
 	// Create infrastructure (doc root, unix user, vhost, state entry).
-	if err := m.Create(ctx, name, st, origSite.PHPVersion, origSite.Preset, origSite.CacheMode, origSite.CustomPreset); err != nil {
+	if err := m.Create(ctx, name, st, origSite.PHPVersion, origSite.Preset, origSite.CacheMode, origSite.Multisite, origSite.CustomPreset); err != nil {
 		return fmt.Errorf("site: restore %s: create: %w", name, err)
 	}
 

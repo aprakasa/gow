@@ -24,7 +24,7 @@ func (m *Manager) Clone(ctx context.Context, src, dst string) error {
 	}
 
 	// Create destination infrastructure.
-	if err := m.Create(ctx, dst, srcSite.Type, srcSite.PHPVersion, srcSite.Preset, srcSite.CacheMode, srcSite.CustomPreset); err != nil {
+	if err := m.Create(ctx, dst, srcSite.Type, srcSite.PHPVersion, srcSite.Preset, srcSite.CacheMode, srcSite.Multisite, srcSite.CustomPreset); err != nil {
 		return fmt.Errorf("site: clone %s → %s: create dest: %w", src, dst, err)
 	}
 
