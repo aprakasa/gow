@@ -33,6 +33,7 @@ type Site struct {
 	KeyPath      string        `json:"key_path,omitempty"`
 	HSTS         bool          `json:"hsts,omitempty"`
 	CacheMode    string        `json:"cache_mode,omitempty"`
+	Multisite    string        `json:"multisite,omitempty"` // "", "subdirectory", or "subdomain"
 	CreatedAt    time.Time     `json:"created_at"`
 }
 
