@@ -40,7 +40,15 @@ func main() {
 		Short: "Create a new site",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return app.RunCreate(cfg, sCreateFlags, args[0], d)
+			if err := app.RunCreate(cfg, sCreateFlags, args[0], d); err != nil {
+				return err
+			}
+			if sCreateFlags.SSLEmail != "" {
+				if err := app.RunSSL(cfg, sCreateFlags, args[0], d); err != nil {
+					fmt.Fprintf(d.Stderr, "  warning: SSL setup failed: %v\n", err)
+				}
+			}
+			return nil
 		},
 	}
 	createCmd.Flags().StringVar(&sCreateFlags.SiteType, "type", "wp", "Site type (html, php, wp)")
@@ -50,6 +58,7 @@ func main() {
 	createCmd.Flags().UintVar(&sCreateFlags.WorkerBudget, "worker-budget", 0, "Worker budget in MB (custom only)")
 	createCmd.Flags().BoolVar(&sCreateFlags.NoCache, "no-cache", false, "Disable LSCache page cache + plugin (wp only)")
 	createCmd.Flags().StringVar(&sCreateFlags.Multisite, "multisite", "", "Enable multisite (subdirectory or subdomain, wp only)")
+	createCmd.Flags().StringVar(&sCreateFlags.SSLEmail, "ssl-email", "", "Auto-enable SSL with Let's Encrypt (requires DNS pointing to this server)")
 
 	var sUpdateFlags app.SiteFlags
 	updateCmd := &cobra.Command{
