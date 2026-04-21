@@ -54,7 +54,9 @@ func newTestEnv(t *testing.T) *testEnv {
 	return &testEnv{
 		deps: Deps{
 			Ctx:    context.Background(),
+			Stdin:  strings.NewReader(""),
 			Stdout: io.Discard,
+			Stderr: io.Discard,
 			DetectSpecs: func() (system.Specs, error) {
 				return system.Specs{TotalRAMMB: 8192, CPUCores: 4}, nil
 			},
@@ -88,6 +90,7 @@ func newTestEnv(t *testing.T) *testEnv {
 			StateFile:  statePath,
 			PolicyFile: "",
 			WebRoot:    webRoot,
+			LogDir:     filepath.Join(dir, "logs"),
 		},
 	}
 }
@@ -293,6 +296,55 @@ func TestRunSSL_NotFound(t *testing.T) {
 	}
 }
 
+func TestRunFlush_Success(t *testing.T) {
+	e := newTestEnv(t)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunFlush(e.cfg, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunFlush() = %v", err)
+	}
+}
+
+func TestRunFlush_NotFound(t *testing.T) {
+	e := newTestEnv(t)
+	err := RunFlush(e.cfg, "nope.test", e.deps)
+	if err == nil {
+		t.Fatal("expected error for nonexistent site")
+	}
+}
+
+func TestRunLog_Success(t *testing.T) {
+	e := newTestEnv(t)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunLog(e.cfg, LogFlags{Lines: 50}, "blog.test", e.deps); err != nil {
+		t.Fatalf("RunLog() = %v", err)
+	}
+}
+
+func TestRunLog_AccessAndErrorConflict(t *testing.T) {
+	e := newTestEnv(t)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	err := RunLog(e.cfg, LogFlags{Access: true, Error: true}, "blog.test", e.deps)
+	if err == nil {
+		t.Fatal("expected error when both --access and --error are set")
+	}
+}
+
+func TestRunWP_Success(t *testing.T) {
+	e := newTestEnv(t)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	if err := RunWP(e.cfg, "blog.test", []string{"plugin", "list"}, e.deps); err != nil {
+		t.Fatalf("RunWP() = %v", err)
+	}
+}
+
+func TestRunWP_NotFound(t *testing.T) {
+	e := newTestEnv(t)
+	err := RunWP(e.cfg, "nope.test", []string{"plugin", "list"}, e.deps)
+	if err == nil {
+		t.Fatal("expected error for nonexistent site")
+	}
+}
+
 func TestNewManager_DetectFails(t *testing.T) {
 	e := newTestEnv(t)
 	e.deps.DetectSpecs = func() (system.Specs, error) {
@@ -322,7 +374,7 @@ func TestNewManager_OpenStoreFails(t *testing.T) {
 }
 
 func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
-	r := &cmdLoggingRunner{}
+	r := &testmock.LoggingRunner{}
 	docRoot := "/var/www/example.com/htdocs"
 
 	if err := configureObjectCache(context.Background(), r, docRoot, "", ""); err != nil {
@@ -330,12 +382,12 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 	}
 
 	foundEval, foundCP := false, false
-	for _, c := range r.calls {
-		if c.name == stack.WPCLIBinPath {
+	for _, c := range r.Calls {
+		if c.Name == stack.WPCLIBinPath {
 			foundEval = true
 			hasEval := false
 			hasPath := false
-			for _, a := range c.args {
+			for _, a := range c.Args {
 				if a == "eval" {
 					hasEval = true
 				}
@@ -350,11 +402,11 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 				t.Error("wp eval call missing --path flag")
 			}
 		}
-		if c.name == "cp" {
+		if c.Name == "cp" {
 			foundCP = true
 			hasNoClobber := false
 			hasDropIn := false
-			for _, a := range c.args {
+			for _, a := range c.Args {
 				if a == "-n" {
 					hasNoClobber = true
 				}
@@ -400,25 +452,4 @@ func TestRunStackPurge_AllowedWhenNoSites(t *testing.T) {
 	if err != nil && strings.Contains(err.Error(), "cannot purge") {
 		t.Fatalf("purge should not be blocked when no sites exist: %v", err)
 	}
-}
-
-// --- Logging runner for tests ---
-
-type cmdCall struct {
-	name string
-	args []string
-}
-
-type cmdLoggingRunner struct {
-	calls []cmdCall
-}
-
-func (r *cmdLoggingRunner) Run(_ context.Context, name string, args ...string) error {
-	r.calls = append(r.calls, cmdCall{name, args})
-	return nil
-}
-
-func (r *cmdLoggingRunner) Output(_ context.Context, name string, args ...string) (string, error) {
-	r.calls = append(r.calls, cmdCall{name, args})
-	return "", nil
 }

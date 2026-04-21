@@ -25,6 +25,7 @@ type CLIConfig struct {
 	StateFile  string
 	PolicyFile string
 	WebRoot    string
+	LogDir     string // per-site log directory (default: /var/log/lsws)
 }
 
 // SiteFlags holds per-command flags for site operations.
@@ -68,7 +69,9 @@ type StackFlags struct {
 // Production code uses DefaultDeps; tests inject mocks via this struct.
 type Deps struct {
 	Ctx          context.Context
+	Stdin        io.Reader
 	Stdout       io.Writer
+	Stderr       io.Writer
 	DetectSpecs  func() (system.Specs, error)
 	LoadPolicy   func(string) (allocator.Policy, error)
 	OpenStore    func(string) (*state.Store, error)
@@ -84,7 +87,9 @@ type Deps struct {
 func DefaultDeps() Deps {
 	d := Deps{
 		Ctx:          context.Background(),
+		Stdin:        os.Stdin,
 		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
 		DetectSpecs:  system.Detect,
 		LoadPolicy:   allocator.LoadPolicyFromFile,
 		OpenStore:    state.Open,
