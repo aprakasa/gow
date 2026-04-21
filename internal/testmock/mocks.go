@@ -5,6 +5,7 @@ package testmock
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,6 +21,42 @@ func (NoopRunner) Run(_ context.Context, _ string, _ ...string) error { return n
 // Output discards the command and returns an empty string.
 func (NoopRunner) Output(_ context.Context, _ string, _ ...string) (string, error) {
 	return "", nil
+}
+
+// Stream discards the command and returns nil.
+func (NoopRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, _ string, _ ...string) error {
+	return nil
+}
+
+// Call records one command invocation made against LoggingRunner.
+type Call struct {
+	Name string
+	Args []string
+}
+
+// LoggingRunner is a stack.Runner that records every call for later inspection
+// without executing anything. Tests assert on Calls after the code under test
+// runs.
+type LoggingRunner struct {
+	Calls []Call
+}
+
+// Run records the call and returns nil.
+func (r *LoggingRunner) Run(_ context.Context, name string, args ...string) error {
+	r.Calls = append(r.Calls, Call{name, args})
+	return nil
+}
+
+// Output records the call and returns an empty string.
+func (r *LoggingRunner) Output(_ context.Context, name string, args ...string) (string, error) {
+	r.Calls = append(r.Calls, Call{name, args})
+	return "", nil
+}
+
+// Stream records the call and returns nil. Streams are not captured.
+func (r *LoggingRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, name string, args ...string) error {
+	r.Calls = append(r.Calls, Call{name, args})
+	return nil
 }
 
 // WriteMock creates a temporary executable shell script that runs body and

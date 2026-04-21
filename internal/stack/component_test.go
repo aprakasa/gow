@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -29,6 +30,11 @@ func (m *mockRunner) Run(_ context.Context, name string, args ...string) error {
 func (m *mockRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	m.outputCalls = append(m.outputCalls, call{name, args})
 	return m.outVal, m.outErr
+}
+
+func (m *mockRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, name string, args ...string) error {
+	m.runCalls = append(m.runCalls, call{name, args})
+	return m.runErr
 }
 
 var ctx = context.Background()

@@ -2,6 +2,7 @@ package stack
 
 import (
 	"context"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -115,6 +116,11 @@ func (r *aptFailRunner) Run(_ context.Context, name string, args ...string) erro
 func (r *aptFailRunner) Output(_ context.Context, name string, args ...string) (string, error) {
 	r.calls = append(r.calls, call{name, args})
 	return "", nil
+}
+
+func (r *aptFailRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, name string, args ...string) error {
+	r.calls = append(r.calls, call{name, args})
+	return nil
 }
 
 func TestOLS_Install_RecoversFromPostinstFailure(t *testing.T) {
@@ -314,6 +320,11 @@ type loggingRunner struct {
 }
 
 func (l *loggingRunner) Run(_ context.Context, name string, args ...string) error {
+	*l.calls = append(*l.calls, call{name, args})
+	return nil
+}
+
+func (l *loggingRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, name string, args ...string) error {
 	*l.calls = append(*l.calls, call{name, args})
 	return nil
 }

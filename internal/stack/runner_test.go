@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -55,6 +56,53 @@ func TestShellRunner_Output_Failure(t *testing.T) {
 	_, err := r.Output(ctx, mock)
 	if err == nil {
 		t.Fatal("Output() should return error on non-zero exit")
+	}
+}
+
+func TestShellRunner_Stream_WritesStdout(t *testing.T) {
+	r := NewShellRunner()
+	mock := testmock.WriteMock(t, "printf '%s' 'streamed'")
+	var out, errOut bytes.Buffer
+	if err := r.Stream(ctx, nil, &out, &errOut, mock); err != nil {
+		t.Fatalf("Stream() = %v", err)
+	}
+	if out.String() != "streamed" {
+		t.Errorf("stdout = %q, want %q", out.String(), "streamed")
+	}
+}
+
+func TestShellRunner_Stream_WritesStderr(t *testing.T) {
+	r := NewShellRunner()
+	mock := testmock.WriteMock(t, "printf '%s' 'oops' >&2")
+	var out, errOut bytes.Buffer
+	if err := r.Stream(ctx, nil, &out, &errOut, mock); err != nil {
+		t.Fatalf("Stream() = %v", err)
+	}
+	if errOut.String() != "oops" {
+		t.Errorf("stderr = %q, want %q", errOut.String(), "oops")
+	}
+}
+
+func TestShellRunner_Stream_ReadsStdin(t *testing.T) {
+	r := NewShellRunner()
+	mock := testmock.WriteMock(t, "cat")
+	var out, errOut bytes.Buffer
+	in := strings.NewReader("piped-in")
+	if err := r.Stream(ctx, in, &out, &errOut, mock); err != nil {
+		t.Fatalf("Stream() = %v", err)
+	}
+	if out.String() != "piped-in" {
+		t.Errorf("stdout = %q, want %q", out.String(), "piped-in")
+	}
+}
+
+func TestShellRunner_Stream_ReturnsErrOnNonZero(t *testing.T) {
+	r := NewShellRunner()
+	mock := testmock.WriteMock(t, "exit 2")
+	var out, errOut bytes.Buffer
+	err := r.Stream(ctx, nil, &out, &errOut, mock)
+	if err == nil {
+		t.Fatal("Stream() should return error on non-zero exit")
 	}
 }
 

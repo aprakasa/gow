@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 )
@@ -12,6 +13,7 @@ import (
 type Runner interface {
 	Run(ctx context.Context, name string, args ...string) error
 	Output(ctx context.Context, name string, args ...string) (string, error)
+	Stream(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error
 }
 
 // ShellRunner executes real commands via exec.CommandContext.
@@ -45,4 +47,18 @@ func (ShellRunner) Output(ctx context.Context, name string, args ...string) (str
 	cmd.Env = noninteractiveEnv()
 	out, err := cmd.Output()
 	return string(out), err
+}
+
+// Stream executes a command with live stdio passthrough. Use for interactive
+// commands (wp shell, wp db cli) and long-running follow operations (tail -f).
+func (ShellRunner) Stream(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // binary and args are hardcoded constants
+	cmd.Env = noninteractiveEnv()
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("stack: %s %v: %w", name, args, err)
+	}
+	return nil
 }
