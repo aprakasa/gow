@@ -191,20 +191,31 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 // configureObjectCache sets up LSCache to use Redis via Unix socket as object
 // cache and copies the object-cache.php drop-in.
 func configureObjectCache(ctx context.Context, r stack.Runner, docRoot, domain, multisite string) error {
-	phpEval := `$conf = get_option('litespeed-cache-conf', array());
-if (!is_array($conf)) $conf = array();
-$conf['object'] = true;
-$conf['object-kind'] = true;
-$conf['object-host'] = '/var/run/redis/redis.sock';
-$conf['object-port'] = 0;
-$conf['object-life'] = 360;
-$conf['object-persistent'] = true;
-$conf['object-admin'] = true;
-$conf['object-db_id'] = 0;
-update_option('litespeed-cache-conf', $conf);
-// Write .litespeed_conf.dat so the object-cache.php drop-in can read
-// settings before plugins are loaded (early bootstrap).
-$dat = array(
+	// Set individual litespeed.conf.* options (LSCache v5+ format).
+	opts := []struct{ key, val string }{
+		{"object", "1"},
+		{"object-kind", "1"},
+		{"object-host", "/var/run/redis/redis.sock"},
+		{"object-port", "0"},
+		{"object-life", "360"},
+		{"object-persistent", "1"},
+		{"object-admin", "1"},
+		{"object-db_id", "0"},
+	}
+	for _, o := range opts {
+		args := []string{"option", "update", "litespeed.conf." + o.key, o.val,
+			"--allow-root", "--path=" + docRoot}
+		if multisite != "" {
+			args = append(args, "--url="+domain)
+		}
+		if err := r.Run(ctx, stack.WPCLIBinPath, args...); err != nil {
+			return fmt.Errorf("set litespeed.conf.%s: %w", o.key, err)
+		}
+	}
+
+	// Write .litespeed_conf.dat so the object-cache.php drop-in can read
+	// settings before plugins are loaded (early bootstrap).
+	phpEval := `$dat = array(
     'object' => true,
     'object-kind' => true,
     'object-host' => '/var/run/redis/redis.sock',
@@ -222,7 +233,7 @@ file_put_contents(WP_CONTENT_DIR . '/.litespeed_conf.dat', wp_json_encode($dat))
 		evalArgs = append(evalArgs, "--url="+domain)
 	}
 	if err := r.Run(ctx, stack.WPCLIBinPath, evalArgs...); err != nil {
-		return fmt.Errorf("configure object cache: %w", err)
+		return fmt.Errorf("write litespeed_conf.dat: %w", err)
 	}
 	// Copy object-cache.php drop-in (LSCache may not auto-create via CLI).
 	if err := r.Run(ctx, "cp", "-n",

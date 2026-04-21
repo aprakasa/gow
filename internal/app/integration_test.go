@@ -413,25 +413,25 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 		t.Fatalf("configureObjectCache() = %v", err)
 	}
 
-	foundEval, foundCP := false, false
+	foundOptionUpdate, foundEval, foundCP := false, false, false
 	for _, c := range r.Calls {
 		if c.Name == stack.WPCLIBinPath {
-			foundEval = true
-			hasEval := false
 			hasPath := false
 			for _, a := range c.Args {
-				if a == "eval" {
-					hasEval = true
-				}
 				if strings.Contains(a, "--path="+docRoot) {
 					hasPath = true
 				}
 			}
-			if !hasEval {
-				t.Error("wp eval call missing 'eval' arg")
-			}
 			if !hasPath {
-				t.Error("wp eval call missing --path flag")
+				t.Error("wp call missing --path flag")
+			}
+			for _, a := range c.Args {
+				if a == "option" {
+					foundOptionUpdate = true
+				}
+				if a == "eval" {
+					foundEval = true
+				}
 			}
 		}
 		if c.Name == "cp" {
@@ -454,8 +454,11 @@ func TestConfigureObjectCache_CallsWPEvalAndCP(t *testing.T) {
 			}
 		}
 	}
+	if !foundOptionUpdate {
+		t.Error("expected wp option update calls for litespeed.conf.*")
+	}
 	if !foundEval {
-		t.Error("expected wp eval call")
+		t.Error("expected wp eval call for .litespeed_conf.dat")
 	}
 	if !foundCP {
 		t.Error("expected cp object-cache.php drop-in call")
