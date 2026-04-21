@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/aprakasa/gow/internal/allocator"
+	"github.com/aprakasa/gow/internal/metrics"
 	"github.com/aprakasa/gow/internal/site"
 	"github.com/aprakasa/gow/internal/state"
 )
@@ -394,7 +396,39 @@ func RunStatus(cfg CLIConfig, w io.Writer, d Deps) error {
 		return fmt.Errorf("compute allocations: %w", err)
 	}
 
-	return formatStatus(w, specs.TotalRAMMB, allocs, policy)
+	if err := formatStatus(w, specs.TotalRAMMB, allocs, policy); err != nil {
+		return err
+	}
+	appendLiveStatus(w, cfg, d)
+	return nil
+}
+
+func appendLiveStatus(w io.Writer, cfg CLIConfig, d Deps) {
+	c := metrics.NewCollector(d.NewRunner(), cfg.WebRoot)
+	sm, _, err := c.Collect(d.Ctx, nil)
+	if err != nil {
+		return
+	}
+	parts := []string{}
+	if sm.ActiveReqs > 0 || sm.TotalReqs > 0 {
+		parts = append(parts, fmt.Sprintf("%d active/%d total reqs", sm.ActiveReqs, sm.TotalReqs))
+	}
+	if sm.RedisUsedMB > 0 {
+		parts = append(parts, fmt.Sprintf("Redis %.1fMB (%.0f%% hit)", sm.RedisUsedMB, sm.RedisHitRate))
+	}
+	if sm.MariaDBConns > 0 {
+		parts = append(parts, fmt.Sprintf("MariaDB %d/%d conn", sm.MariaDBConns, sm.MariaDBMaxConns))
+	}
+	if sm.TotalDiskMB > 0 {
+		parts = append(parts, fmt.Sprintf("Disk %s", formatMB(sm.TotalDiskMB)))
+	}
+	if len(parts) > 0 {
+		fmt.Fprintf(w, "Live: %s\n", joinStrings(parts, " | "))
+	}
+}
+
+func joinStrings(ss []string, sep string) string {
+	return strings.Join(ss, sep)
 }
 
 func resolveTuneFlags(sf SiteFlags) (string, *state.CustomPreset, error) {
