@@ -29,11 +29,29 @@ func lsphpBinPath(ver string) string {
 	return "/usr/local/lsws/lsphp" + ver + "/bin/lsphp"
 }
 
-// ensurePHPInPath ensures a CLI PHP binary with mysqli is available for tools
-// like WP-CLI and Composer. LSPHP uses the litespeed SAPI which these tools
-// reject, so we install the system php-cli package instead.
+// ensurePHPInPath ensures a CLI PHP binary with the extensions required by
+// WP-CLI and Composer (phar, mbstring, iconv, mysqli, xml) is available.
+// LSPHP uses the litespeed SAPI which these tools reject, so we install the
+// system php-cli package instead.
+//
+// On Ubuntu 24.04, some extensions ship inside php8.x-common/php8.x-mysql as
+// .so files but without corresponding .ini entries in conf.d. We scan for any
+// installed .so that lacks a conf.d ini and create one.
 func ensurePHPInPath(ctx context.Context, r Runner) {
-	_ = r.Run(ctx, "apt-get", "install", "-y", "php-cli", "php-mysql")
+	_ = r.Run(ctx, "apt-get", "install", "-y", "php-cli", "php-mbstring", "php-xml", "php-mysql")
+	// Scan for .so files in the extension dir that don't have a corresponding
+	// .ini in the CLI conf.d. Ubuntu 24.04 omits ini files for bundled
+	// extensions (phar, iconv) and the mysql family (mysqli, mysqlnd, pdo_mysql).
+	_ = r.Run(ctx, "sh", "-c",
+		`confd=$(ls -d /etc/php/*/cli/conf.d 2>/dev/null | head -1) &&
+		 extdir=$(php -r 'echo ini_get("extension_dir");' 2>/dev/null) &&
+		 [ -n "$confd" ] && [ -n "$extdir" ] &&
+		 for so in "$extdir"/*.so; do
+		     name=$(basename "$so" .so)
+		     [ "$name" = "opcache" ] && continue
+		     [ -f "$confd"/??-"$name".ini ] && continue
+		     echo "extension=${name}.so" > "$confd/20-${name}.ini"
+		 done || true`)
 }
 
 // LSPHP returns the LSPHP stack component for the given PHP version.
