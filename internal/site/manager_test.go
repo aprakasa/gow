@@ -941,8 +941,113 @@ func TestDelete_SSLSite(t *testing.T) {
 	if strings.Contains(httpdContent, "ssl.test ssl.test") {
 		t.Error("SSL map entry should be removed after delete")
 	}
-	// SSL listener itself should still exist (other sites might use it).
-	if !strings.Contains(httpdContent, "listener SSL {") {
-		t.Error("SSL listener should remain for other sites")
+	// SSL listener should be removed since no sites use SSL.
+	if strings.Contains(httpdContent, "listener SSL {") {
+		t.Error("SSL listener should be removed when no sites use SSL")
 	}
+}
+
+func TestReconcile_SSLCleanupWhenNoSSL(t *testing.T) {
+	ctx := context.Background()
+	m, dir := setupManager(t)
+
+	// Add an SSL site and reconcile to create the SSL listener.
+	if err := m.store.Add(state.Site{
+		Name:       "ssl.test",
+		Type:       "html",
+		SSLEnabled: true,
+		CertPath:   "/etc/ssl/ssl.test.crt",
+		KeyPath:    "/etc/ssl/ssl.test.key",
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "www", "ssl.test", "htdocs"), 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := m.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile (with SSL): %v", err)
+	}
+
+	httpdPath := filepath.Join(dir, "conf", "httpd_config.conf")
+	data, _ := os.ReadFile(httpdPath) //nolint:gosec // test
+	if !strings.Contains(string(data), "listener SSL {") {
+		t.Fatal("SSL listener should exist after reconcile with SSL site")
+	}
+
+	// Remove the SSL site and add a non-SSL site.
+	_ = m.store.Remove("ssl.test")
+	if err := m.store.Add(state.Site{
+		Name:       "plain.test",
+		Type:       "wp",
+		PHPVersion: "83",
+		Preset:     "standard",
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "www", "plain.test", "htdocs"), 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := m.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile (no SSL): %v", err)
+	}
+
+	data, _ = os.ReadFile(httpdPath) //nolint:gosec // test
+	if strings.Contains(string(data), "listener SSL {") {
+		t.Error("SSL listener should be removed when no sites use SSL")
+	}
+}
+
+func TestReconcile_SiteWithSSL_MapEntryInSSLBlock(t *testing.T) {
+	ctx := context.Background()
+	m, dir := setupManager(t)
+	docRoot := filepath.Join(dir, "www", "ssl.test", "htdocs")
+	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir docRoot: %v", err)
+	}
+
+	if err := m.store.Add(state.Site{
+		Name:       "ssl.test",
+		Type:       "wp",
+		PHPVersion: "83",
+		Preset:     "standard",
+		SSLEnabled: true,
+		CertPath:   "/etc/letsencrypt/live/ssl.test/fullchain.pem",
+		KeyPath:    "/etc/letsencrypt/live/ssl.test/privkey.pem",
+	}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+	if err := m.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile() = %v", err)
+	}
+
+	data, _ := os.ReadFile(filepath.Join(dir, "conf", "httpd_config.conf")) //nolint:gosec // test
+	content := string(data)
+
+	// Extract just the SSL listener block and verify map entry is inside it.
+	sslBlock := extractBlock(content, "listener SSL {")
+	expectedMap := "map                      ssl.test ssl.test"
+	if !strings.Contains(sslBlock, expectedMap) {
+		t.Errorf("SSL listener missing map entry for ssl.test.\nBlock:\n%s", sslBlock)
+	}
+}
+
+// extractBlock returns the text from header through its matching closing brace.
+func extractBlock(content, header string) string {
+	idx := strings.Index(content, header)
+	if idx < 0 {
+		return ""
+	}
+	depth := 0
+	for i := idx; i < len(content); i++ {
+		switch content[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return content[idx : i+1]
+			}
+		}
+	}
+	return content[idx:]
 }

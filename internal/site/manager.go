@@ -57,6 +57,16 @@ func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, pol
 func (m *Manager) Reconcile(ctx context.Context) error {
 	sites := m.store.Sites()
 	if len(sites) == 0 {
+		// Clean up stale SSL listener when no sites remain.
+		httpdConfPath := filepath.Join(m.confDir, "httpd_config.conf")
+		hc, err := ols.OpenHttpd(httpdConfPath)
+		if err != nil {
+			return fmt.Errorf("site: open httpd config: %w", err)
+		}
+		hc.RemoveSSLListener()
+		if err := hc.Save(); err != nil {
+			return fmt.Errorf("site: save httpd config: %w", err)
+		}
 		return nil
 	}
 
@@ -89,6 +99,8 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 				break
 			}
 		}
+	} else {
+		hc.RemoveSSLListener()
 	}
 
 	for _, s := range sites {
