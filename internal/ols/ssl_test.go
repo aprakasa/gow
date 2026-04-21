@@ -151,6 +151,59 @@ func TestRemoveSSLMapEntry_NotFound(t *testing.T) {
 	}
 }
 
+func TestRemoveSSLListener(t *testing.T) {
+	p := writeHttpdConf(t, baseHttpdConf())
+
+	if err := EnsureSSLListener(p); err != nil {
+		t.Fatalf("EnsureSSLListener() = %v", err)
+	}
+	if err := AddSSLMapEntry(p, "blog.test"); err != nil {
+		t.Fatalf("AddSSLMapEntry() = %v", err)
+	}
+
+	// Open batch editor and remove.
+	hc, err := OpenHttpd(p)
+	if err != nil {
+		t.Fatalf("OpenHttpd() = %v", err)
+	}
+	hc.RemoveSSLListener()
+	if err := hc.Save(); err != nil {
+		t.Fatalf("Save() = %v", err)
+	}
+
+	got, _ := os.ReadFile(p) //nolint:gosec // test
+	content := string(got)
+
+	if strings.Contains(content, "listener SSL {") {
+		t.Error("SSL listener block should be removed")
+	}
+	if strings.Contains(content, "secure                   1") {
+		t.Error("SSL listener content should be gone")
+	}
+	// Default listener must be untouched.
+	if !strings.Contains(content, "listener Default {") {
+		t.Error("Default listener should still be present")
+	}
+}
+
+func TestRemoveSSLListener_NoopWhenMissing(t *testing.T) {
+	p := writeHttpdConf(t, baseHttpdConf())
+
+	hc, err := OpenHttpd(p)
+	if err != nil {
+		t.Fatalf("OpenHttpd() = %v", err)
+	}
+	hc.RemoveSSLListener()
+	if err := hc.Save(); err != nil {
+		t.Fatalf("Save() = %v", err)
+	}
+
+	got, _ := os.ReadFile(p) //nolint:gosec // test
+	if !strings.Contains(string(got), "listener Default {") {
+		t.Error("Default listener should be unchanged")
+	}
+}
+
 // TestAddSSLMapEntry_WithExistingDefaultMap verifies that AddSSLMapEntry correctly
 // adds the entry to the SSL listener even when the same map text already exists
 // in the Default listener (the bug fixed after code review).

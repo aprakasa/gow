@@ -174,6 +174,51 @@ func TestUpdateVHostRestrained(t *testing.T) {
 	}
 }
 
+// baseHttpdConfNoSpace returns a config where the listener has no space
+// before the opening brace, mimicking how some OLS versions write config.
+func baseHttpdConfNoSpace() string {
+	return `serverName localhost
+user nobody
+group nogroup
+
+virtualHost Example {
+    vhRoot                   Example/
+    allowSymbolLink          1
+    enableScript             1
+    restrained               1
+    setUIDMode               0
+    configFile               conf/vhosts/Example/vhconf.conf
+}
+
+listener Default{
+    address                  *:8088
+    secure                   0
+    map                      Example *
+}
+`
+}
+
+func TestRegisterVHost_NoSpaceBeforeBrace(t *testing.T) {
+	// OLS sometimes writes "listener Default{" without a space before {.
+	// findBlock must tolerate this.
+	p := writeHttpdConf(t, baseHttpdConfNoSpace())
+
+	err := RegisterVHost(p, "blog.test", "/var/www/blog.test", "conf/vhosts/blog.test/vhconf.conf")
+	if err != nil {
+		t.Fatalf("RegisterVHost() = %v", err)
+	}
+
+	got, _ := os.ReadFile(p) //nolint:gosec // test
+	content := string(got)
+
+	if !strings.Contains(content, "virtualHost blog.test {") {
+		t.Error("missing virtualHost block for blog.test")
+	}
+	if !strings.Contains(content, "map                      blog.test blog.test") {
+		t.Error("missing listener map entry for blog.test")
+	}
+}
+
 func TestRegisterVHost_MultipleSites(t *testing.T) {
 	p := writeHttpdConf(t, baseHttpdConf())
 

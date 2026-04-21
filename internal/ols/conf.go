@@ -41,9 +41,23 @@ func (c *httpdConf) save() error {
 // "listener SSL {" or "virtualHost blog.test {") and returns the byte range
 // [start, end) covering header through closing brace. Returns -1, -1 when
 // the header is not present.
+// findBlock locates a top-level block by its opening header (e.g.
+// "listener Default {"). It tolerates variable whitespace between the header
+// name and the opening brace — OLS sometimes omits the space (e.g.
+// "listener Default{").
 func (c *httpdConf) findBlock(header string) (int, int) {
-	idx := strings.Index(c.content, header)
+	// Strip trailing " {" to get the search prefix; match flexibly.
+	prefix := strings.TrimRight(header, " {")
+	idx := strings.Index(c.content, prefix)
 	if idx < 0 {
+		return -1, -1
+	}
+	// Skip optional whitespace to the opening brace.
+	pos := idx + len(prefix)
+	for pos < len(c.content) && (c.content[pos] == ' ' || c.content[pos] == '\t') {
+		pos++
+	}
+	if pos >= len(c.content) || c.content[pos] != '{' {
 		return -1, -1
 	}
 	depth := 0
@@ -102,10 +116,10 @@ func (c *httpdConf) removeLineInBlock(header, line string) {
 
 // removeBlock removes the entire block with the given header, including its
 // opening and closing braces.
-func (c *httpdConf) removeBlock(header string) bool {
+func (c *httpdConf) removeBlock(header string) {
 	s, e := c.findBlock(header)
 	if s < 0 {
-		return false
+		return
 	}
 	// Also strip one trailing newline so the file doesn't accumulate blanks
 	// across register/unregister cycles.
@@ -114,7 +128,6 @@ func (c *httpdConf) removeBlock(header string) bool {
 	}
 	c.content = c.content[:s] + c.content[e:]
 	c.dirty = true
-	return true
 }
 
 // append adds text to the end of the configuration.
@@ -241,6 +254,9 @@ func (h *HttpdConf) RegisterVHost(siteName, vhRoot, configFile string) {
 
 // EnsureSSLListener adds the SSL listener block if missing.
 func (h *HttpdConf) EnsureSSLListener() { h.inner.ensureSSLListener() }
+
+// RemoveSSLListener removes the entire SSL listener block.
+func (h *HttpdConf) RemoveSSLListener() { h.inner.removeBlock("listener SSL {") }
 
 // SetSSLListenerCerts sets the default SSL listener's cert and key paths.
 func (h *HttpdConf) SetSSLListenerCerts(cert, key string) { h.inner.setSSLListenerCerts(cert, key) }
