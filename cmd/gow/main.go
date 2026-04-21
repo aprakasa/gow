@@ -160,7 +160,45 @@ func main() {
 	restoreCmd.Flags().StringVar(&restoreFlags.RestoreFile, "file", "", "Path to backup archive (required)")
 	_ = restoreCmd.MarkFlagRequired("file")
 
-	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd, cloneCmd, backupCmd, restoreCmd)
+	flushCmd := &cobra.Command{
+		Use:   "flush <domain>",
+		Short: "Purge WordPress object cache and LSCache",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunFlush(cfg, args[0], d)
+		},
+	}
+
+	var logFlags app.LogFlags
+	logCmd := &cobra.Command{
+		Use:   "log <domain>",
+		Short: "Tail the site's access or error log",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunLog(cfg, logFlags, args[0], d)
+		},
+	}
+	logCmd.Flags().BoolVar(&logFlags.Access, "access", false, "Tail the access log")
+	logCmd.Flags().BoolVar(&logFlags.Error, "error", false, "Tail the error log (default)")
+	logCmd.Flags().BoolVarP(&logFlags.Follow, "follow", "f", false, "Follow the log as it grows")
+	logCmd.Flags().IntVarP(&logFlags.Lines, "lines", "n", 100, "Number of lines from the end to show")
+
+	wpCmd := &cobra.Command{
+		Use:                "wp <domain> [-- <wp-cli args>...]",
+		Short:              "Run wp-cli scoped to a site's document root",
+		Args:               cobra.MinimumNArgs(1),
+		DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			domain := args[0]
+			wpArgs := args[1:]
+			if len(wpArgs) > 0 && wpArgs[0] == "--" {
+				wpArgs = wpArgs[1:]
+			}
+			return app.RunWP(cfg, domain, wpArgs, d)
+		},
+	}
+
+	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd, cloneCmd, backupCmd, restoreCmd, flushCmd, logCmd, wpCmd)
 
 	// --- Stack commands ---
 

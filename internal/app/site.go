@@ -39,7 +39,11 @@ func NewManager(cfg CLIConfig, d Deps) (*site.Manager, error) {
 	}
 
 	ctrl := d.NewOLS()
-	return site.NewManager(store, ctrl, specs, policy, cfg.ConfDir, cfg.WebRoot, d.NewRunner()), nil
+	mgr := site.NewManager(store, ctrl, specs, policy, cfg.ConfDir, cfg.WebRoot, d.NewRunner())
+	if cfg.LogDir != "" {
+		mgr.SetLogDir(cfg.LogDir)
+	}
+	return mgr, nil
 }
 
 // RunCreate creates a new site.
