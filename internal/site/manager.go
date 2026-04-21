@@ -27,6 +27,7 @@ type Manager struct {
 	policy  allocator.Policy
 	confDir string
 	webRoot string
+	logDir  string
 	runner  stack.Runner
 }
 
@@ -41,6 +42,7 @@ func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, pol
 		policy:  policy,
 		confDir: confDir,
 		webRoot: webRoot,
+		logDir:  defaultLogDir,
 		runner:  runner,
 	}
 }
@@ -144,11 +146,14 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		return fmt.Errorf("site: create vhost dir %s: %w", vhostDir, err)
 	}
 	siteRoot := filepath.Join(m.webRoot, s.Name)
+	if err := os.MkdirAll(m.logDir, 0o755); err != nil { //nolint:gosec // OLS needs readable log dirs
+		return fmt.Errorf("site: create log dir %s: %w", m.logDir, err)
+	}
 	data := template.VHostData{
 		Site:             s.Name,
 		Domain:           s.Name,
 		WebRoot:          siteRoot,
-		LogDir:           "/var/log/lsws",
+		LogDir:           m.logDir,
 		PHPVer:           s.PHPVersion,
 		Children:         alloc.Children,
 		PHPMemoryLimitMB: alloc.PHPMemoryLimitMB,
@@ -215,6 +220,12 @@ func siteType(s state.Site) string {
 		return "wp"
 	}
 	return s.Type
+}
+
+// SetLogDir overrides the per-site log directory (used by tests and the app
+// layer to point at a temp directory instead of /var/log/lsws).
+func (m *Manager) SetLogDir(dir string) {
+	m.logDir = dir
 }
 
 // UserName returns the system user name for a site domain.

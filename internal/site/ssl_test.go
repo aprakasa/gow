@@ -2,6 +2,7 @@ package site
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,11 @@ func (r *recordingRunner) Output(_ context.Context, name string, args ...string)
 	return "", nil
 }
 
+func (r *recordingRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, name string, args ...string) error {
+	r.commands = append(r.commands, append([]string{name}, args...))
+	return nil
+}
+
 // Verify recordingRunner satisfies stack.Runner at compile time.
 var _ stack.Runner = (*recordingRunner)(nil)
 
@@ -54,7 +60,9 @@ func setupManagerWithRunner(t *testing.T, runner stack.Runner) (*Manager, string
 		t.Fatalf("mkdir www: %v", err)
 	}
 	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
-	return NewManager(store, ctrl, system.Specs{TotalRAMMB: 8192, CPUCores: 4}, allocator.DefaultPolicy(), confDir, webRoot, runner), dir
+	mgr := NewManager(store, ctrl, system.Specs{TotalRAMMB: 8192, CPUCores: 4}, allocator.DefaultPolicy(), confDir, webRoot, runner)
+	mgr.logDir = filepath.Join(dir, "logs")
+	return mgr, dir
 }
 
 func TestEnableSSL_Success(t *testing.T) {

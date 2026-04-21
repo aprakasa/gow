@@ -58,7 +58,9 @@ func setupManager(t *testing.T) (*Manager, string) {
 		t.Fatalf("mkdir www: %v", err)
 	}
 
-	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{}), dir
+	mgr := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
+	mgr.SetLogDir(filepath.Join(dir, "logs"))
+	return mgr, dir
 }
 
 func fixtureSite(name, preset string) state.Site {
@@ -98,7 +100,9 @@ func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
 	}
 	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
-	return NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
+	mgr := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
+	mgr.SetLogDir(filepath.Join(dir, "logs"))
+	return mgr
 }
 
 // --- Reconcile ---
@@ -210,6 +214,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
 
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
+	m.SetLogDir(filepath.Join(dir, "logs"))
 
 	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
