@@ -317,7 +317,7 @@ func TestResolveTuneFlags(t *testing.T) {
 func TestResolveStackFlags_DefaultWhenEmpty(t *testing.T) {
 	sf := StackFlags{}
 	names, phpVersions := resolveStackFlags(sf)
-	wantNames := []string{"ols", "mariadb", "redis", "wpcli"}
+	wantNames := []string{"ols", "mariadb", "redis", "wpcli", "composer", "certbot"}
 	if len(names) != len(wantNames) {
 		t.Fatalf("names = %v, want %v", names, wantNames)
 	}

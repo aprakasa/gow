@@ -10,12 +10,13 @@ type Component struct {
 	Name string
 
 	// Package lifecycle
-	InstallFn func(context.Context, Runner) error
-	UpgradeFn func(context.Context, Runner) error
-	RemoveFn  func(context.Context, Runner) error // apt-get remove; keeps configs
-	PurgeFn   func(context.Context, Runner) error // apt-get purge + deep clean
-	VerifyFn  func(context.Context, Runner) error
-	StatusFn  func(context.Context, Runner) (string, error)
+	InstallFn   func(context.Context, Runner) error
+	UpgradeFn   func(context.Context, Runner) error
+	RemoveFn    func(context.Context, Runner) error // apt-get remove; keeps configs
+	PurgeFn     func(context.Context, Runner) error // apt-get purge + deep clean
+	ConfigureFn func(context.Context, Runner) error // idempotent config, runs even if already installed
+	VerifyFn    func(context.Context, Runner) error
+	StatusFn    func(context.Context, Runner) (string, error)
 
 	// Service lifecycle (nil for binary-only components)
 	StartFn   func(context.Context, Runner) error
@@ -48,6 +49,18 @@ func (c Component) Upgrade(ctx context.Context, r Runner) error {
 	}
 	if err := c.UpgradeFn(ctx, r); err != nil {
 		return fmt.Errorf("stack: upgrade %s: %w", c.Name, err)
+	}
+	return nil
+}
+
+// Configure runs the component's ConfigureFn if set. Always runs, even when
+// the package is already installed.
+func (c Component) Configure(ctx context.Context, r Runner) error {
+	if c.ConfigureFn == nil {
+		return nil
+	}
+	if err := c.ConfigureFn(ctx, r); err != nil {
+		return fmt.Errorf("stack: configure %s: %w", c.Name, err)
 	}
 	return nil
 }

@@ -114,7 +114,16 @@ func RunStackOp(sf StackFlags, op stackOp, d Deps) error {
 		if op.validate && !op.reverse {
 			if c.VerifyFn != nil && !strings.HasPrefix(c.Name, "lsphp") {
 				if err := c.Verify(ctx, r); err == nil {
-					fmt.Fprintf(d.Stdout, "  %s: already installed, skipping\n", c.Name)
+					fmt.Fprintf(d.Stdout, "  %s: already installed", c.Name)
+					if c.ConfigureFn != nil {
+						fmt.Fprintf(d.Stdout, ", configuring...\n")
+						if err := c.Configure(ctx, r); err != nil {
+							return err
+						}
+						fmt.Fprintf(d.Stdout, "  %s: configured\n", c.Name)
+					} else {
+						fmt.Fprintf(d.Stdout, ", skipping\n")
+					}
 					continue
 				}
 			}
@@ -306,7 +315,7 @@ func resolveStackFlags(sf StackFlags) ([]string, []string) {
 
 	if len(names) == 0 && len(phpVersions) == 0 {
 		phpVersions = []string{"83"}
-		names = []string{"ols", "mariadb", "redis", "wpcli"}
+		names = []string{"ols", "mariadb", "redis", "wpcli", "composer", "certbot"}
 	}
 
 	return names, phpVersions
