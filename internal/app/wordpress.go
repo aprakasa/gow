@@ -113,7 +113,10 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		if multisite == "subdomain" {
 			subdomain = "true"
 		}
-		consts := []struct{ name, val string; raw bool }{
+		consts := []struct {
+			name, val string
+			raw       bool
+		}{
 			{"MULTISITE", "true", false},
 			{"SUBDOMAIN_INSTALL", subdomain, false},
 			{"DOMAIN_CURRENT_SITE", "'" + domain + "'", true},
