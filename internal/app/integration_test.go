@@ -345,6 +345,38 @@ func TestRunWP_NotFound(t *testing.T) {
 	}
 }
 
+func TestRunMetrics_Table(t *testing.T) {
+	e := newTestEnv(t)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	var buf bytes.Buffer
+	if err := RunMetrics(e.cfg, &buf, e.deps, false); err != nil {
+		t.Fatalf("RunMetrics() = %v", err)
+	}
+	if !strings.Contains(buf.String(), "blog.test") {
+		t.Errorf("expected 'blog.test' in output, got %q", buf.String())
+	}
+}
+
+func TestRunMetrics_JSON(t *testing.T) {
+	e := newTestEnv(t)
+	_ = RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "blog.test", e.deps)
+	var buf bytes.Buffer
+	if err := RunMetrics(e.cfg, &buf, e.deps, true); err != nil {
+		t.Fatalf("RunMetrics(--json) = %v", err)
+	}
+	if !strings.Contains(buf.String(), `"sites"`) {
+		t.Errorf("expected JSON with 'sites' key, got %q", buf.String())
+	}
+}
+
+func TestRunMetrics_Empty(t *testing.T) {
+	e := newTestEnv(t)
+	var buf bytes.Buffer
+	if err := RunMetrics(e.cfg, &buf, e.deps, false); err != nil {
+		t.Fatalf("RunMetrics() with no sites = %v", err)
+	}
+}
+
 func TestNewManager_DetectFails(t *testing.T) {
 	e := newTestEnv(t)
 	e.deps.DetectSpecs = func() (system.Specs, error) {

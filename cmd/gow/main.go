@@ -337,7 +337,17 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(siteCmd, stackCmd, presetsCmd, reconcileCmd, statusCmd)
+	var metricsJSON bool
+	metricsCmd := &cobra.Command{
+		Use:   "metrics",
+		Short: "Show live server metrics (disk, DB, Redis, OLS)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return app.RunMetrics(cfg, cmd.OutOrStdout(), d, metricsJSON)
+		},
+	}
+	metricsCmd.Flags().BoolVar(&metricsJSON, "json", false, "Output as JSON")
+
+	rootCmd.AddCommand(siteCmd, stackCmd, presetsCmd, reconcileCmd, statusCmd, metricsCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
