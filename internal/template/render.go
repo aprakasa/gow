@@ -145,3 +145,9 @@ func RenderIndexHTML(domain string) (string, error) {
 func RenderMaintenance(domain string) (string, error) {
 	return defaultRenderer.render("maintenance.html.tmpl", struct{ Domain string }{Domain: domain})
 }
+
+// RenderMaintenancePHP renders a PHP script that sends a 503 status code and
+// outputs the maintenance page HTML.
+func RenderMaintenancePHP(domain string) (string, error) {
+	return defaultRenderer.render("maintenance.php.tmpl", struct{ Domain string }{Domain: domain})
+}

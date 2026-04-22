@@ -21,14 +21,15 @@ import (
 // allocator policy. Each method is a lifecycle operation that mutates state
 // and reconciles the OLS configuration.
 type Manager struct {
-	store   *state.Store
-	ols     ols.Controller
-	specs   system.Specs
-	policy  allocator.Policy
-	confDir string
-	webRoot string
-	logDir  string
-	runner  stack.Runner
+	store      *state.Store
+	ols        ols.Controller
+	specs      system.Specs
+	policy     allocator.Policy
+	confDir    string
+	webRoot    string
+	logDir     string
+	runner     stack.Runner
+	defaultPHP string // fallback PHP version for sites without one (e.g. HTML in maintenance)
 }
 
 // NewManager creates a Manager with the given dependencies. confDir is the
@@ -183,6 +184,10 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 	var content string
 	var err error
 	if s.Maintenance {
+		// Maintenance vhost needs a PHP handler to send 503 status code.
+		if data.PHPVer == "" {
+			data.PHPVer = m.defaultPHP
+		}
 		content, err = renderMaintenanceVHost(data)
 	} else {
 		content, err = template.RenderVHost(variant, data)
@@ -205,24 +210,25 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 	return nil
 }
 
-// renderMaintenanceVHost renders a vhost that serves a static 503 maintenance
-// page. It uses the html template (no PHP handler) and writes the maintenance
-// HTML to the docRoot as index.html.
+// renderMaintenanceVHost renders a vhost that serves a 503 maintenance page
+// via a small PHP script. It writes maintenance.php to the docRoot and renders
+// the vhost-maintenance template which rewrites all requests to it. phpVer
+// provides the PHP binary path — it comes from the site's own version or a
+// fallback default.
 func renderMaintenanceVHost(data template.VHostData) (string, error) {
-	maintHTML, err := template.RenderMaintenance(data.Domain)
+	maintPHP, err := template.RenderMaintenancePHP(data.Domain)
 	if err != nil {
 		return "", err
 	}
-	// Write the maintenance page to docRoot/index.html.
 	htdocsDir := filepath.Join(data.WebRoot, "htdocs")
 	if err := os.MkdirAll(htdocsDir, 0o755); err != nil { //nolint:gosec // lsws must traverse
 		return "", fmt.Errorf("create htdocs dir: %w", err)
 	}
-	indexPath := filepath.Join(htdocsDir, "index.html")
-	if err := os.WriteFile(indexPath, []byte(maintHTML), 0o644); err != nil { //nolint:gosec // lsws must read
+	phpPath := filepath.Join(htdocsDir, "maintenance.php")
+	if err := os.WriteFile(phpPath, []byte(maintPHP), 0o644); err != nil { //nolint:gosec // lsws must read
 		return "", fmt.Errorf("write maintenance page: %w", err)
 	}
-	return template.RenderVHost("html", data)
+	return template.RenderVHost("maintenance", data)
 }
 
 // siteType returns the template variant name for a site. Sites created before
@@ -238,6 +244,12 @@ func siteType(s state.Site) string {
 // layer to point at a temp directory instead of /var/log/lsws).
 func (m *Manager) SetLogDir(dir string) {
 	m.logDir = dir
+}
+
+// SetDefaultPHP sets the fallback PHP version used when rendering maintenance
+// mode for sites that have no PHP version (e.g. HTML sites).
+func (m *Manager) SetDefaultPHP(ver string) {
+	m.defaultPHP = ver
 }
 
 // UserName returns the system user name for a site domain.

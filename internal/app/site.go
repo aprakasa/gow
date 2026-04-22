@@ -45,6 +45,9 @@ func NewManager(cfg CLIConfig, d Deps) (*site.Manager, error) {
 	if cfg.LogDir != "" {
 		mgr.SetLogDir(cfg.LogDir)
 	}
+	if versions := d.InstalledPHP(); len(versions) > 0 {
+		mgr.SetDefaultPHP(versions[len(versions)-1])
+	}
 	return mgr, nil
 }
 

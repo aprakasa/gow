@@ -371,6 +371,51 @@ func TestRenderMaintenance(t *testing.T) {
 	}
 }
 
+func TestRenderMaintenancePHP(t *testing.T) {
+	got, err := RenderMaintenancePHP("example.com")
+	if err != nil {
+		t.Fatalf("RenderMaintenancePHP() error = %v", err)
+	}
+	if !strings.Contains(got, "http_response_code(503)") {
+		t.Error("maintenance PHP should set 503 status code")
+	}
+	if !strings.Contains(got, "Retry-After") {
+		t.Error("maintenance PHP should send Retry-After header")
+	}
+	if !strings.Contains(got, "Under Maintenance") {
+		t.Error("maintenance PHP should contain heading")
+	}
+	if !strings.Contains(got, "example.com") {
+		t.Error("maintenance PHP should contain domain")
+	}
+}
+
+func TestRenderVHostMaintenance(t *testing.T) {
+	data := VHostData{
+		Site:    "blog.test",
+		Domain:  "blog.test",
+		WebRoot: "/var/www/blog.test",
+		LogDir:  "/var/log/lsws",
+		PHPVer:  "83",
+	}
+	got, err := RenderVHost("maintenance", data)
+	if err != nil {
+		t.Fatalf("RenderVHost(maintenance) error = %v", err)
+	}
+	if !strings.Contains(got, "scripthandler") {
+		t.Error("maintenance vhost should contain scripthandler")
+	}
+	if !strings.Contains(got, "extprocessor lsphp-blog.test") {
+		t.Error("maintenance vhost should contain extprocessor block")
+	}
+	if !strings.Contains(got, "maintenance.php") {
+		t.Error("maintenance vhost should rewrite to maintenance.php")
+	}
+	if !strings.Contains(got, "maxConns                1") {
+		t.Error("maintenance vhost should use minimal resources (maxConns 1)")
+	}
+}
+
 const htmlVHostGolden = `docRoot                   /var/www/static.test/htdocs
 vhDomain                  static.test
 enableGzip                1

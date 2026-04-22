@@ -1,0 +1,21 @@
+<?php
+http_response_code(503);
+header('Content-Type: text/html; charset=utf-8');
+header('Retry-After: 3600');
+?><!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{.Domain}} &mdash; Maintenance</title>
+<style>
+body{font-family:sans-serif;text-align:center;padding:4rem 1rem;color:#555}
+h1{font-size:2rem;margin-bottom:.5rem}
+p{font-size:1.1rem}
+</style>
+</head>
+<body>
+<h1>Under Maintenance</h1>
+<p>{{.Domain}} is temporarily offline for scheduled maintenance.</p>
+<p>Please check back shortly.</p>
+</body>
+</html>

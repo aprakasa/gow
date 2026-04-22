@@ -60,6 +60,7 @@ func setupManager(t *testing.T) (*Manager, string) {
 
 	mgr := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 	mgr.SetLogDir(filepath.Join(dir, "logs"))
+	mgr.SetDefaultPHP("83")
 	return mgr, dir
 }
 
@@ -102,6 +103,7 @@ func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
 	specs := system.Specs{TotalRAMMB: 8192, CPUCores: 4}
 	mgr := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 	mgr.SetLogDir(filepath.Join(dir, "logs"))
+	mgr.SetDefaultPHP("83")
 	return mgr
 }
 
@@ -215,6 +217,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 	m.SetLogDir(filepath.Join(dir, "logs"))
+	m.SetDefaultPHP("83")
 
 	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
@@ -677,24 +680,34 @@ func TestReconcile_MaintenanceMode(t *testing.T) {
 		t.Fatalf("Reconcile() = %v", err)
 	}
 
-	// Check vhost uses html template (no PHP).
+	// Maintenance vhost uses PHP to send 503 status code.
 	vhostPath := filepath.Join(m.confDir, "vhosts", "blog.test", "vhconf.conf")
 	data, err := os.ReadFile(vhostPath) //nolint:gosec // test
 	if err != nil {
 		t.Fatalf("vhost config not found: %v", err)
 	}
 	content := string(data)
-	if strings.Contains(content, "scripthandler") {
-		t.Error("maintenance vhost should not contain scripthandler")
+	if !strings.Contains(content, "scripthandler") {
+		t.Error("maintenance vhost should contain scripthandler for PHP")
+	}
+	if !strings.Contains(content, "extprocessor lsphp-blog.test") {
+		t.Error("maintenance vhost should contain extprocessor block")
+	}
+	if !strings.Contains(content, "maintenance.php") {
+		t.Error("maintenance vhost should rewrite to maintenance.php")
 	}
 
-	// Check maintenance page written to docRoot.
-	maintPath := filepath.Join(m.webRoot, "blog.test", "htdocs", "index.html")
+	// Check maintenance PHP page written to docRoot.
+	maintPath := filepath.Join(m.webRoot, "blog.test", "htdocs", "maintenance.php")
 	maintData, err := os.ReadFile(maintPath) //nolint:gosec // test
 	if err != nil {
 		t.Fatalf("maintenance page not found: %v", err)
 	}
-	if !strings.Contains(string(maintData), "Under Maintenance") {
+	maintContent := string(maintData)
+	if !strings.Contains(maintContent, "503") {
+		t.Error("maintenance page should send 503 status code")
+	}
+	if !strings.Contains(maintContent, "Under Maintenance") {
 		t.Error("maintenance page should contain 'Under Maintenance'")
 	}
 }
