@@ -107,6 +107,13 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("wp config create: %w", err)
 	}
 
+	// Use direct filesystem access — no FTP prompt for plugin/theme installs.
+	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "set", "FS_METHOD", "direct",
+		"--type=constant", "--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("wp config set FS_METHOD: %w", err)
+	}
+
 	// Add multisite constants to wp-config.php.
 	if multisite != "" {
 		subdomain := "false"
@@ -162,6 +169,16 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		}
 	}
 	fmt.Fprintln(w, " OK")
+
+	// Create writable .htaccess so WP can write rewrite rules without warnings.
+	// OLS ignores .htaccess (rules are in vhconf.conf), but the file needs to
+	// exist and be writable to suppress the wp-admin "update your .htaccess" notice.
+	if err := r.Run(ctx, "touch", filepath.Join(docRoot, ".htaccess")); err != nil {
+		return fmt.Errorf("create .htaccess: %w", err)
+	}
+	if err := r.Run(ctx, "chmod", "666", filepath.Join(docRoot, ".htaccess")); err != nil {
+		return fmt.Errorf("chmod .htaccess: %w", err)
+	}
 
 	if cacheMode == "lscache" {
 		fmt.Fprint(w, "  Installing LiteSpeed Cache...")
