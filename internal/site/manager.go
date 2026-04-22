@@ -21,15 +21,16 @@ import (
 // allocator policy. Each method is a lifecycle operation that mutates state
 // and reconciles the OLS configuration.
 type Manager struct {
-	store      *state.Store
-	ols        ols.Controller
-	specs      system.Specs
-	policy     allocator.Policy
-	confDir    string
-	webRoot    string
-	logDir     string
-	runner     stack.Runner
-	defaultPHP string // fallback PHP version for sites without one (e.g. HTML in maintenance)
+	store             *state.Store
+	ols               ols.Controller
+	specs             system.Specs
+	policy            allocator.Policy
+	confDir           string
+	webRoot           string
+	logDir            string
+	runner            stack.Runner
+	defaultPHP        string // fallback PHP version for sites without one (e.g. HTML in maintenance)
+	logrotateConfPath string // override for tests; defaults to /etc/logrotate.d/gow
 }
 
 // NewManager creates a Manager with the given dependencies. confDir is the
@@ -67,6 +68,9 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 		hc.RemoveSSLListener()
 		if err := hc.Save(); err != nil {
 			return fmt.Errorf("site: save httpd config: %w", err)
+		}
+		if err := m.writeLogrotateConfig(); err != nil {
+			return fmt.Errorf("site: logrotate: %w", err)
 		}
 		return nil
 	}
@@ -112,6 +116,10 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 
 	if err := hc.Save(); err != nil {
 		return fmt.Errorf("site: save httpd config: %w", err)
+	}
+
+	if err := m.writeLogrotateConfig(); err != nil {
+		return fmt.Errorf("site: logrotate: %w", err)
 	}
 
 	if err := m.ols.Validate(ctx); err != nil {
@@ -244,6 +252,12 @@ func siteType(s state.Site) string {
 // layer to point at a temp directory instead of /var/log/lsws).
 func (m *Manager) SetLogDir(dir string) {
 	m.logDir = dir
+}
+
+// SetLogrotateConfPath overrides the logrotate config file path (used by tests
+// to avoid writing to /etc/logrotate.d).
+func (m *Manager) SetLogrotateConfPath(path string) {
+	m.logrotateConfPath = path
 }
 
 // SetDefaultPHP sets the fallback PHP version used when rendering maintenance

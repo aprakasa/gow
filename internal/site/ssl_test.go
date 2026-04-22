@@ -62,6 +62,7 @@ func setupManagerWithRunner(t *testing.T, runner stack.Runner) (*Manager, string
 	ctrl := ols.NewController(testmock.WriteMock(t, "exit 0"))
 	mgr := NewManager(store, ctrl, system.Specs{TotalRAMMB: 8192, CPUCores: 4}, allocator.DefaultPolicy(), confDir, webRoot, runner)
 	mgr.logDir = filepath.Join(dir, "logs")
+	mgr.SetLogrotateConfPath(filepath.Join(dir, "etc", "logrotate.d", "gow"))
 	return mgr, dir
 }
 

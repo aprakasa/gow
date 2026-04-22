@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -44,6 +45,7 @@ func NewManager(cfg CLIConfig, d Deps) (*site.Manager, error) {
 	mgr := site.NewManager(store, ctrl, specs, policy, cfg.ConfDir, cfg.WebRoot, d.NewRunner())
 	if cfg.LogDir != "" {
 		mgr.SetLogDir(cfg.LogDir)
+		mgr.SetLogrotateConfPath(filepath.Join(filepath.Dir(cfg.LogDir), "etc", "logrotate.d", "gow"))
 	}
 	if versions := d.InstalledPHP(); len(versions) > 0 {
 		mgr.SetDefaultPHP(versions[len(versions)-1])

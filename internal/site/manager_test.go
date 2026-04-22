@@ -61,6 +61,7 @@ func setupManager(t *testing.T) (*Manager, string) {
 	mgr := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 	mgr.SetLogDir(filepath.Join(dir, "logs"))
 	mgr.SetDefaultPHP("83")
+	mgr.SetLogrotateConfPath(filepath.Join(dir, "etc", "logrotate.d", "gow"))
 	return mgr, dir
 }
 
@@ -104,6 +105,7 @@ func setupReconcileTest(t *testing.T, store *state.Store) *Manager {
 	mgr := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 	mgr.SetLogDir(filepath.Join(dir, "logs"))
 	mgr.SetDefaultPHP("83")
+	mgr.SetLogrotateConfPath(filepath.Join(dir, "etc", "logrotate.d", "gow"))
 	return mgr
 }
 
@@ -218,6 +220,7 @@ func TestReconcile_CallsValidateAndReload(t *testing.T) {
 	m := NewManager(store, ctrl, specs, allocator.DefaultPolicy(), confDir, webRoot, &testmock.NoopRunner{})
 	m.SetLogDir(filepath.Join(dir, "logs"))
 	m.SetDefaultPHP("83")
+	m.logrotateConfPath = filepath.Join(dir, "etc", "logrotate.d", "gow")
 
 	if err := m.Reconcile(ctx); err != nil {
 		t.Fatalf("Reconcile() = %v", err)
