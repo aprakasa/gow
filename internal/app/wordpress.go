@@ -153,6 +153,20 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("wp config set DISABLE_WP_CRON: %w", err)
 	}
 
+	// Prevent theme/plugin file editing in the admin dashboard.
+	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "set", "DISALLOW_FILE_EDIT", "true",
+		"--type=constant", "--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("wp config set DISALLOW_FILE_EDIT: %w", err)
+	}
+
+	// Enable automatic core updates (minor + major).
+	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "set", "WP_AUTO_UPDATE_CORE", "true",
+		"--type=constant", "--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("wp config set WP_AUTO_UPDATE_CORE: %w", err)
+	}
+
 	// Add multisite constants to wp-config.php.
 	if multisite != "" {
 		subdomain := "false"
@@ -217,6 +231,14 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 	}
 	if err := r.Run(ctx, "chmod", "666", filepath.Join(docRoot, ".htaccess")); err != nil {
 		return fmt.Errorf("chmod .htaccess: %w", err)
+	}
+
+	// Remove files that expose the WordPress version.
+	if err := r.Run(ctx, "rm", "-f",
+		filepath.Join(docRoot, "readme.html"),
+		filepath.Join(docRoot, "license.txt"),
+	); err != nil {
+		return fmt.Errorf("remove version files: %w", err)
 	}
 
 	if cacheMode == "lscache" {

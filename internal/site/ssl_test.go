@@ -118,6 +118,19 @@ func TestEnableSSL_Success(t *testing.T) {
 	if !found {
 		t.Error("certbot was not called")
 	}
+
+	var forceSSLFound bool
+	for _, cmd := range rr.commands {
+		if len(cmd) > 0 && cmd[0] == "/usr/local/bin/wp" {
+			all := strings.Join(cmd, " ")
+			if strings.Contains(all, "FORCE_SSL_ADMIN") {
+				forceSSLFound = true
+			}
+		}
+	}
+	if !forceSSLFound {
+		t.Error("wp config set FORCE_SSL_ADMIN should be called")
+	}
 }
 
 func TestEnableSSL_Staging(t *testing.T) {

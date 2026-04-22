@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 )
 
@@ -100,6 +101,13 @@ func (m *Manager) EnableSSL(ctx context.Context, name string, opts SSLOptions) e
 		s.HSTS = opts.HSTS
 	}); err != nil {
 		return fmt.Errorf("site: ssl %s: update state: %w", name, err)
+	}
+
+	docRoot := filepath.Join(m.webRoot, name, "htdocs")
+	if err := m.runner.Run(ctx, stack.WPCLIBinPath, "config", "set", "FORCE_SSL_ADMIN", "true",
+		"--type=constant", "--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("site: ssl %s: set FORCE_SSL_ADMIN: %w", name, err)
 	}
 
 	if err := m.Reconcile(ctx); err != nil {

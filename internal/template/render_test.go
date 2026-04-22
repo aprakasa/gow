@@ -171,6 +171,27 @@ func TestRenderVHostContainsSecurityContexts(t *testing.T) {
 	if !strings.Contains(got, "context /xmlrpc.php") {
 		t.Error("output should restrict xmlrpc.php")
 	}
+	if !strings.Contains(got, "wp-content/uploads") {
+		t.Error("output should block PHP execution in uploads")
+	}
+	if !strings.Contains(got, "perClientConnLimit") {
+		t.Error("output should rate-limit wp-login.php")
+	}
+	if !strings.Contains(got, "X-Content-Type-Options: nosniff") {
+		t.Error("output should include X-Content-Type-Options header")
+	}
+	if !strings.Contains(got, "X-Frame-Options: SAMEORIGIN") {
+		t.Error("output should include X-Frame-Options header")
+	}
+	if !strings.Contains(got, "Referrer-Policy: strict-origin-when-cross-origin") {
+		t.Error("output should include Referrer-Policy header")
+	}
+	if !strings.Contains(got, "author=") {
+		t.Error("output should block author enumeration")
+	}
+	if !strings.Contains(got, ".htaccess") {
+		t.Error("output should block .htaccess access")
+	}
 }
 
 func TestRenderVHost_LSCacheMode(t *testing.T) {
