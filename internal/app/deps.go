@@ -30,22 +30,24 @@ type CLIConfig struct {
 
 // SiteFlags holds per-command flags for site operations.
 type SiteFlags struct {
-	SiteType     string // --type (create only: html, php, wp)
-	PHP          string // --php (version string)
-	Preset       string // --tune (blog, woocommerce, custom)
-	PHPMemory    uint   // --php-memory
-	WorkerBudget uint   // --worker-budget
-	NoCache      bool   // --no-cache (create only, wp only: disable LSCache)
-	Multisite    string // --multisite (create only, wp only: subdirectory or subdomain)
-	Verbose      bool   // --verbose (info only)
-	NoPrompt     bool   // --no-prompt (delete only)
-	Isolate      bool   // --isolate (update only)
-	SSLEmail     string // --email (ssl only)
-	SSLStaging   bool   // --staging (ssl only)
-	SSLWildcard  bool   // --wildcard (ssl only, requires --dns)
-	SSLDNS       string // --dns (ssl only, currently: "cloudflare")
-	SSLHSTS      bool   // --hsts (ssl only)
-	RestoreFile  string // --file (restore only)
+	SiteType       string // --type (create only: html, php, wp)
+	PHP            string // --php (version string)
+	Preset         string // --tune (blog, woocommerce, custom)
+	PHPMemory      uint   // --php-memory
+	WorkerBudget   uint   // --worker-budget
+	NoCache        bool   // --no-cache (create only, wp only: disable LSCache)
+	Multisite      string // --multisite (create only, wp only: subdirectory or subdomain)
+	Verbose        bool   // --verbose (info only)
+	NoPrompt       bool   // --no-prompt (delete only)
+	Isolate        bool   // --isolate (update only)
+	SSLEmail       string // --email (ssl only)
+	SSLStaging     bool   // --staging (ssl only)
+	SSLWildcard    bool   // --wildcard (ssl only, requires --dns)
+	SSLDNS         string // --dns (ssl only, currently: "cloudflare")
+	SSLHSTS        bool   // --hsts (ssl only)
+	RestoreFile    string // --file (restore only)
+	BackupSchedule string // --schedule (backup-schedule: daily or weekly)
+	BackupRetain   int    // --retain (backup-schedule: number of backups to keep)
 }
 
 // StackFlags holds per-command flags for stack operations.

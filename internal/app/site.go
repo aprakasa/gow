@@ -187,6 +187,13 @@ func RunInfo(cfg CLIConfig, sf SiteFlags, domain string, w io.Writer, d Deps) er
 		fmt.Fprintf(w, "User:     %s\n", s.UnixUser)
 	}
 	fmt.Fprintf(w, "Created:  %s\n", s.CreatedAt.Format("2006-01-02 15:04:05"))
+	if s.BackupSchedule != "" {
+		retain := s.BackupRetain
+		if retain == 0 {
+			retain = 7
+		}
+		fmt.Fprintf(w, "Backup:    %s (retain %d)\n", s.BackupSchedule, retain)
+	}
 
 	if !sf.Verbose {
 		return nil
@@ -306,6 +313,24 @@ func RunDelete(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	sType := site.Type
 	if sType == "" {
 		sType = "wp"
+	}
+
+	// Clear backup schedule before deletion.
+	if site.BackupSchedule != "" {
+		_ = store.Update(domain, func(s *state.Site) {
+			s.BackupSchedule = ""
+			s.BackupRetain = 0
+		})
+		hasScheduled := false
+		for _, s := range store.Sites() {
+			if s.Name != domain && s.BackupSchedule != "" {
+				hasScheduled = true
+				break
+			}
+		}
+		if !hasScheduled {
+			_ = removeGlobalBackupCron()
+		}
 	}
 
 	if err := m.Delete(d.Ctx, domain); err != nil {

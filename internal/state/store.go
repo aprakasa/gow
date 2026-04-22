@@ -21,20 +21,22 @@ import (
 // For non-wp sites, CacheMode is always empty. Sites loaded from pre-CacheMode
 // state default to "lscache" in Open for backward compatibility.
 type Site struct {
-	Name         string        `json:"name"`
-	Type         string        `json:"type"`
-	PHPVersion   string        `json:"php_version"`
-	Preset       string        `json:"preset"`
-	CustomPreset *CustomPreset `json:"preset_custom,omitempty"`
-	Maintenance  bool          `json:"maintenance"`
-	UnixUser     string        `json:"unix_user,omitempty"`
-	SSLEnabled   bool          `json:"ssl_enabled"`
-	CertPath     string        `json:"cert_path,omitempty"`
-	KeyPath      string        `json:"key_path,omitempty"`
-	HSTS         bool          `json:"hsts,omitempty"`
-	CacheMode    string        `json:"cache_mode,omitempty"`
-	Multisite    string        `json:"multisite,omitempty"` // "", "subdirectory", or "subdomain"
-	CreatedAt    time.Time     `json:"created_at"`
+	Name           string        `json:"name"`
+	Type           string        `json:"type"`
+	PHPVersion     string        `json:"php_version"`
+	Preset         string        `json:"preset"`
+	CustomPreset   *CustomPreset `json:"preset_custom,omitempty"`
+	Maintenance    bool          `json:"maintenance"`
+	UnixUser       string        `json:"unix_user,omitempty"`
+	SSLEnabled     bool          `json:"ssl_enabled"`
+	CertPath       string        `json:"cert_path,omitempty"`
+	KeyPath        string        `json:"key_path,omitempty"`
+	HSTS           bool          `json:"hsts,omitempty"`
+	CacheMode      string        `json:"cache_mode,omitempty"`
+	Multisite      string        `json:"multisite,omitempty"`       // "", "subdirectory", or "subdomain"
+	BackupSchedule string        `json:"backup_schedule,omitempty"` // "daily", "weekly", or ""
+	BackupRetain   int           `json:"backup_retain,omitempty"`   // 0 = use default (7)
+	CreatedAt      time.Time     `json:"created_at"`
 }
 
 // CustomPreset stores the user-specified memory parameters when Preset is

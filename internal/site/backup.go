@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -86,4 +87,49 @@ func (m *Manager) Backup(ctx context.Context, name string) (string, error) {
 	}
 
 	return archivePath, nil
+}
+
+// ListBackups returns the sorted list of backup archive filenames for the given
+// domain. The filenames are sorted lexicographically, which matches chronological
+// order given the YYYYMMDD-HHMMSS timestamp format.
+func ListBackups(name string) ([]string, error) {
+	entries, err := os.ReadDir(BackupDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("site: list backups %s: %w", name, err)
+	}
+	prefix := name + "-"
+	var matches []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) && strings.HasSuffix(e.Name(), ".tar.gz") {
+			matches = append(matches, e.Name())
+		}
+	}
+	sort.Strings(matches)
+	return matches, nil
+}
+
+// PruneBackups removes the oldest backup archives for name, keeping at most
+// retain. If retain <= 0, no pruning is performed.
+func (m *Manager) PruneBackups(name string, retain int) error {
+	if retain <= 0 {
+		return nil
+	}
+	files, err := ListBackups(name)
+	if err != nil {
+		return err
+	}
+	if len(files) <= retain {
+		return nil
+	}
+	// Files are sorted oldest-first; delete from the beginning.
+	for i := 0; i < len(files)-retain; i++ {
+		path := filepath.Join(BackupDir, files[i])
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("site: prune backup %s: %w", files[i], err)
+		}
+	}
+	return nil
 }

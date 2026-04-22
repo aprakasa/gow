@@ -207,7 +207,30 @@ func main() {
 		},
 	}
 
-	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd, deleteCmd, sslCmd, cloneCmd, backupCmd, restoreCmd, flushCmd, logCmd, wpCmd)
+	var backupScheduleFlags app.SiteFlags
+	backupScheduleCmd := &cobra.Command{
+		Use:   "backup-schedule <domain>",
+		Short: "Set automatic backup schedule",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunBackupSchedule(cfg, args[0], backupScheduleFlags.BackupSchedule, backupScheduleFlags.BackupRetain, d)
+		},
+	}
+	backupScheduleCmd.Flags().StringVar(&backupScheduleFlags.BackupSchedule, "schedule", "daily", "Backup frequency (daily or weekly)")
+	backupScheduleCmd.Flags().IntVar(&backupScheduleFlags.BackupRetain, "retain", 7, "Number of backups to retain")
+
+	backupUnscheduleCmd := &cobra.Command{
+		Use:   "backup-unschedule <domain>",
+		Short: "Remove automatic backup schedule",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			return app.RunBackupUnschedule(cfg, args[0], d)
+		},
+	}
+
+	siteCmd.AddCommand(createCmd, updateCmd, infoCmd, listCmd, onlineCmd, offlineCmd,
+		deleteCmd, sslCmd, cloneCmd, backupCmd, restoreCmd, flushCmd, logCmd, wpCmd,
+		backupScheduleCmd, backupUnscheduleCmd)
 
 	// --- Stack commands ---
 
@@ -356,7 +379,16 @@ func main() {
 	}
 	metricsCmd.Flags().BoolVar(&metricsJSON, "json", false, "Output as JSON")
 
-	rootCmd.AddCommand(siteCmd, stackCmd, presetsCmd, reconcileCmd, statusCmd, metricsCmd)
+	backupCronCmd := &cobra.Command{
+		Use:    "backup-cron",
+		Short:  "Run scheduled backups (invoked by cron)",
+		Hidden: true,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return app.RunBackupCron(cfg, d)
+		},
+	}
+
+	rootCmd.AddCommand(siteCmd, stackCmd, presetsCmd, reconcileCmd, statusCmd, metricsCmd, backupCronCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

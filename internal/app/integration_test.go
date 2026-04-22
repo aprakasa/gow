@@ -13,6 +13,7 @@ import (
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
+	sitePkg "github.com/aprakasa/gow/internal/site"
 	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 	"github.com/aprakasa/gow/internal/system"
@@ -547,5 +548,194 @@ func TestRemoveCronFile_Idempotent(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "gow-exists.test")); !os.IsNotExist(err) {
 		t.Error("file should be gone after remove")
+	}
+}
+
+func TestRunBackupSchedule_Success(t *testing.T) {
+	e := newTestEnv(t)
+	cronDir := redirectCronDir(t)
+	gowBinPath = filepath.Join(t.TempDir(), "gow")
+	t.Cleanup(func() { gowBinPath = "/usr/local/bin/gow" })
+
+	// Create a site first.
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "sched.test", e.deps); err != nil {
+		t.Fatalf("RunCreate: %v", err)
+	}
+
+	if err := RunBackupSchedule(e.cfg, "sched.test", "daily", 7, e.deps); err != nil {
+		t.Fatalf("RunBackupSchedule: %v", err)
+	}
+
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
+	s, ok := store.Find("sched.test")
+	if !ok {
+		t.Fatal("site not found")
+	}
+	if s.BackupSchedule != "daily" {
+		t.Errorf("BackupSchedule = %q, want daily", s.BackupSchedule)
+	}
+	if s.BackupRetain != 7 {
+		t.Errorf("BackupRetain = %d, want 7", s.BackupRetain)
+	}
+
+	data, err := os.ReadFile(filepath.Join(cronDir, "gow-backups")) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("read cron file: %v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "backup-cron") {
+		t.Errorf("cron file should contain 'backup-cron', got: %s", got)
+	}
+}
+
+func TestRunBackupSchedule_InvalidSchedule(t *testing.T) {
+	e := newTestEnv(t)
+	if err := RunBackupSchedule(e.cfg, "sched.test", "hourly", 7, e.deps); err == nil {
+		t.Fatal("expected error for invalid schedule")
+	}
+}
+
+func TestRunBackupSchedule_SiteNotFound(t *testing.T) {
+	e := newTestEnv(t)
+	if err := RunBackupSchedule(e.cfg, "nope.test", "daily", 7, e.deps); err == nil {
+		t.Fatal("expected error for nonexistent site")
+	}
+}
+
+func TestRunBackupUnschedule_Success(t *testing.T) {
+	e := newTestEnv(t)
+	redirectCronDir(t)
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "sched.test", e.deps); err != nil {
+		t.Fatalf("RunCreate: %v", err)
+	}
+	if err := RunBackupSchedule(e.cfg, "sched.test", "daily", 7, e.deps); err != nil {
+		t.Fatalf("RunBackupSchedule: %v", err)
+	}
+
+	var buf bytes.Buffer
+	e.deps.Stdout = &buf
+	if err := RunBackupUnschedule(e.cfg, "sched.test", e.deps); err != nil {
+		t.Fatalf("RunBackupUnschedule: %v", err)
+	}
+
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
+	s, _ := store.Find("sched.test")
+	if s.BackupSchedule != "" {
+		t.Errorf("BackupSchedule = %q, want empty", s.BackupSchedule)
+	}
+}
+
+func TestRunBackupUnschedule_LastSiteRemovesCronFile(t *testing.T) {
+	e := newTestEnv(t)
+	cronDir := redirectCronDir(t)
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "a.test", e.deps); err != nil {
+		t.Fatalf("RunCreate a: %v", err)
+	}
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "b.test", e.deps); err != nil {
+		t.Fatalf("RunCreate b: %v", err)
+	}
+	if err := RunBackupSchedule(e.cfg, "a.test", "daily", 7, e.deps); err != nil {
+		t.Fatalf("Schedule a: %v", err)
+	}
+	if err := RunBackupSchedule(e.cfg, "b.test", "daily", 7, e.deps); err != nil {
+		t.Fatalf("Schedule b: %v", err)
+	}
+
+	// Unschedule one — cron file should still exist.
+	if err := RunBackupUnschedule(e.cfg, "a.test", e.deps); err != nil {
+		t.Fatalf("Unschedule a: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cronDir, "gow-backups")); os.IsNotExist(err) {
+		t.Error("cron file should still exist with one scheduled site")
+	}
+
+	// Unschedule the other — cron file should be removed.
+	if err := RunBackupUnschedule(e.cfg, "b.test", e.deps); err != nil {
+		t.Fatalf("Unschedule b: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cronDir, "gow-backups")); !os.IsNotExist(err) {
+		t.Error("cron file should be removed when no sites have schedules")
+	}
+}
+
+func TestRunBackupCron_DailySite(t *testing.T) {
+	e := newTestEnv(t)
+	redirectCronDir(t)
+
+	backupDir := filepath.Join(t.TempDir(), "backups")
+	origBackupDir := sitePkg.BackupDir
+	sitePkg.BackupDir = backupDir
+	t.Cleanup(func() { sitePkg.BackupDir = origBackupDir })
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "cron.test", e.deps); err != nil {
+		t.Fatalf("RunCreate: %v", err)
+	}
+
+	store, _ := e.deps.OpenStore(e.cfg.StateFile)
+	_ = store.Update("cron.test", func(s *state.Site) {
+		s.BackupSchedule = "daily"
+		s.BackupRetain = 3
+	})
+	_ = store.Save()
+
+	// RunBackupCron succeeds — the NoopRunner doesn't create real archives,
+	// so we verify only that the cron loop completes without error.
+	if err := RunBackupCron(e.cfg, e.deps); err != nil {
+		t.Fatalf("RunBackupCron: %v", err)
+	}
+}
+
+func TestRunDelete_ClearsSchedule(t *testing.T) {
+	e := newTestEnv(t)
+	cronDir := redirectCronDir(t)
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "del.test", e.deps); err != nil {
+		t.Fatalf("RunCreate: %v", err)
+	}
+	if err := RunBackupSchedule(e.cfg, "del.test", "daily", 7, e.deps); err != nil {
+		t.Fatalf("RunBackupSchedule: %v", err)
+	}
+
+	// Verify cron file exists.
+	if _, err := os.Stat(filepath.Join(cronDir, "gow-backups")); os.IsNotExist(err) {
+		t.Fatal("cron file should exist after scheduling")
+	}
+
+	if err := RunDelete(e.cfg, SiteFlags{NoPrompt: true}, "del.test", e.deps); err != nil {
+		t.Fatalf("RunDelete: %v", err)
+	}
+
+	// Cron file should be removed since it was the only scheduled site.
+	if _, err := os.Stat(filepath.Join(cronDir, "gow-backups")); !os.IsNotExist(err) {
+		t.Error("cron file should be removed after deleting the only scheduled site")
+	}
+}
+
+func TestEnsureGlobalBackupCron_Content(t *testing.T) {
+	dir := redirectCronDir(t)
+
+	if err := ensureGlobalBackupCron(); err != nil {
+		t.Fatalf("ensureGlobalBackupCron: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "gow-backups")) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{"0 2 * * *", "root", "backup-cron"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("cron file should contain %q, got: %s", want, got)
+		}
+	}
+}
+
+func TestRemoveGlobalBackupCron_Idempotent(t *testing.T) {
+	redirectCronDir(t)
+
+	if err := removeGlobalBackupCron(); err != nil {
+		t.Fatalf("removeGlobalBackupCron on nonexistent file: %v", err)
 	}
 }

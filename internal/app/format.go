@@ -15,7 +15,7 @@ func formatSites(w io.Writer, sites []state.Site) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "SITE\tTYPE\tPHP\tPRESET\tSTATUS"); err != nil {
+	if _, err := fmt.Fprintln(tw, "SITE\tTYPE\tPHP\tPRESET\tSTATUS\tBACKUP"); err != nil {
 		return err
 	}
 	for _, s := range sites {
@@ -33,7 +33,11 @@ func formatSites(w io.Writer, sites []state.Site) error {
 			php = "-"
 			preset = "-"
 		}
-		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", s.Name, sType, php, preset, status); err != nil {
+		backup := "-"
+		if s.BackupSchedule != "" {
+			backup = s.BackupSchedule
+		}
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", s.Name, sType, php, preset, status, backup); err != nil {
 			return err
 		}
 	}
