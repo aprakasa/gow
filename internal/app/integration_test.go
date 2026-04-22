@@ -488,3 +488,64 @@ func TestRunStackPurge_AllowedWhenNoSites(t *testing.T) {
 		t.Fatalf("purge should not be blocked when no sites exist: %v", err)
 	}
 }
+
+func redirectCronDir(t *testing.T) string {
+	t.Helper()
+	orig := cronDir
+	tmp := t.TempDir()
+	cronDir = tmp
+	t.Cleanup(func() { cronDir = orig })
+	return tmp
+}
+
+func TestWriteCronFile_Content(t *testing.T) {
+	dir := redirectCronDir(t)
+
+	if err := writeCronFile("example.com", "/var/www/example.com/htdocs"); err != nil {
+		t.Fatalf("writeCronFile: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "gow-example.com")) //nolint:gosec // test
+	if err != nil {
+		t.Fatalf("read cron file: %v", err)
+	}
+	got := string(data)
+
+	for _, want := range []string{
+		"*/5 * * * * root",
+		"cd /var/www/example.com/htdocs",
+		"cron event run --due-now",
+		"--allow-root",
+		">/dev/null 2>&1",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("cron file should contain %q, got:\n%s", want, got)
+		}
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Error("cron file should end with newline")
+	}
+}
+
+func TestRemoveCronFile_Idempotent(t *testing.T) {
+	dir := redirectCronDir(t)
+
+	// Removing a non-existent file should succeed.
+	if err := removeCronFile("nope.test"); err != nil {
+		t.Fatalf("removeCronFile on missing file: %v", err)
+	}
+
+	// Write then remove.
+	if err := writeCronFile("exists.test", "/var/www/exists.test/htdocs"); err != nil {
+		t.Fatalf("writeCronFile: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gow-exists.test")); err != nil {
+		t.Fatalf("file should exist: %v", err)
+	}
+	if err := removeCronFile("exists.test"); err != nil {
+		t.Fatalf("removeCronFile: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gow-exists.test")); !os.IsNotExist(err) {
+		t.Error("file should be gone after remove")
+	}
+}

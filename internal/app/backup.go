@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
 )
 
 // RunBackup validates the domain, creates a Manager, and calls Backup.
@@ -34,6 +35,9 @@ func RunRestore(cfg CLIConfig, domain, archivePath string, d Deps) error {
 	if err := m.Restore(d.Ctx, domain, archivePath); err != nil {
 		return err
 	}
+	if err := writeCronFile(domain, filepath.Join(cfg.WebRoot, domain, "htdocs")); err != nil {
+		return err
+	}
 	fmt.Fprintf(d.Stdout, "Site %s restored successfully.\n", domain)
 	return nil
 }
@@ -52,6 +56,9 @@ func RunClone(cfg CLIConfig, src, dst string, d Deps) error {
 	}
 	fmt.Fprintf(d.Stdout, "Cloning %s → %s...\n", src, dst)
 	if err := m.Clone(d.Ctx, src, dst); err != nil {
+		return err
+	}
+	if err := writeCronFile(dst, filepath.Join(cfg.WebRoot, dst, "htdocs")); err != nil {
 		return err
 	}
 	fmt.Fprintf(d.Stdout, "Site %s cloned to %s successfully.\n", src, dst)

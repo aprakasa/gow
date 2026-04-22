@@ -7,13 +7,45 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/aprakasa/gow/internal/stack"
 )
 
+// cronDir is the system cron drop-in directory. Overridden in tests.
+var cronDir = "/etc/cron.d"
+
+// writeCronFile creates /etc/cron.d/gow-<domain> with a WP cron event runner.
+func writeCronFile(domain, docRoot string) error {
+	path := filepath.Join(cronDir, "gow-"+domain)
+	content := fmt.Sprintf(
+		"*/5 * * * * root cd %s && %s cron event run --due-now --allow-root >/dev/null 2>&1\n",
+		docRoot, stack.WPCLIBinPath,
+	)
+	if err := os.MkdirAll(cronDir, 0o755); err != nil { //nolint:gosec // cron.d must be world-readable
+		return fmt.Errorf("create %s: %w", cronDir, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec // cron entry, not secret
+		return fmt.Errorf("write cron %s: %w", domain, err)
+	}
+	return nil
+}
+
+// removeCronFile removes the per-site cron entry. Tolerates already-gone files.
+func removeCronFile(domain string) error {
+	path := filepath.Join(cronDir, "gow-"+domain)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove cron %s: %w", domain, err)
+	}
+	return nil
+}
+
 func dropSiteDB(ctx context.Context, domain string) error {
+	if err := removeCronFile(domain); err != nil {
+		return err
+	}
 	dbName := dbNameFromDomain(domain)
 	qDB, err := quoteDBIdentifier(dbName)
 	if err != nil {
@@ -114,6 +146,13 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("wp config set FS_METHOD: %w", err)
 	}
 
+	// Disable WP-Cron — replaced by system crontab.
+	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "set", "DISABLE_WP_CRON", "true",
+		"--type=constant", "--allow-root", "--path="+docRoot,
+	); err != nil {
+		return fmt.Errorf("wp config set DISABLE_WP_CRON: %w", err)
+	}
+
 	// Add multisite constants to wp-config.php.
 	if multisite != "" {
 		subdomain := "false"
@@ -196,6 +235,10 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 			return err
 		}
 		fmt.Fprintln(w, " OK")
+	}
+
+	if err := writeCronFile(domain, docRoot); err != nil {
+		return err
 	}
 
 	fmt.Fprintf(w, "\n  URL:      http://%s\n", domain)
