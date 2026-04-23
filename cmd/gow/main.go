@@ -12,12 +12,16 @@ import (
 	"github.com/aprakasa/gow/internal/app"
 )
 
+// Set via -ldflags at build time.
+var version = "dev"
+
 func main() {
 	d := app.DefaultDeps()
 
 	rootCmd := &cobra.Command{
 		Use:           "gow",
 		Short:         "WordPress on OpenLiteSpeed, simplified.",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

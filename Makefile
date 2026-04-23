@@ -3,7 +3,7 @@
 all: vet lint test build
 
 build:
-	go build -o gow ./cmd/gow/
+	go build -ldflags "-s -w -X main.version=$(shell git describe --tags --always --dirty 2>/dev/null || echo dev)" -o gow ./cmd/gow/
 
 test:
 	go test -race ./...
@@ -26,6 +26,9 @@ clean:
 LDFLAGS := -s -w
 GOOS = linux
 GOARCH = amd64
+
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X main.version=$(VERSION)
 
 cross-build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "$(LDFLAGS)" -o gow-linux ./cmd/gow/
