@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 
 	"github.com/aprakasa/gow/internal/app"
 )
@@ -389,6 +390,17 @@ func main() {
 	}
 
 	rootCmd.AddCommand(siteCmd, stackCmd, presetsCmd, reconcileCmd, statusCmd, metricsCmd, backupCronCmd)
+
+	genDocsCmd := &cobra.Command{
+		Use:    "generate-docs <dir>",
+		Short:  "Generate markdown docs from command tree",
+		Args:   cobra.ExactArgs(1),
+		Hidden: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			return doc.GenMarkdownTree(rootCmd, args[0])
+		},
+	}
+	rootCmd.AddCommand(genDocsCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
