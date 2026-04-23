@@ -24,6 +24,7 @@ fi
 
 ERRORS=0
 FORCE=0
+ASSUME_YES=0
 MODE=install
 
 # --- Utility functions ---
@@ -215,12 +216,14 @@ _purge_flow() {
 
     printf "  This will remove the gow binary, configuration, cron jobs, and backups.\n"
     printf "  Site data in /var/www will NOT be removed.\n"
-    printf "  Continue? [y/N] "
-    read -r answer
-    case "$answer" in
-        y*|Y*) ;;
-        *) _info "Aborted."; exit 0 ;;
-    esac
+    if [ "$ASSUME_YES" -ne 1 ]; then
+        printf "  Continue? [y/N] "
+        read -r answer
+        case "$answer" in
+            y*|Y*) ;;
+            *) _info "Aborted."; exit 0 ;;
+        esac
+    fi
 
     _run "Removing binary" rm -f "$GOW_BIN"
     _run "Removing cron files" rm -f "$GOW_CRON_DIR"/gow-* "$GOW_CRON_DIR"/gow-backups
@@ -242,10 +245,12 @@ _parse_args() {
         case "$arg" in
             --purge|--uninstall) MODE=purge ;;
             --force)             FORCE=1 ;;
+            -y|--yes)            ASSUME_YES=1 ;;
             --help|-h)
-                printf "Usage: %s [--purge] [--force] [--help]\n\n" "$0"
+                printf "Usage: %s [--purge] [--force] [-y] [--help]\n\n" "$0"
                 printf "  --purge   Uninstall gow (binary, config, cron, backups)\n"
                 printf "  --force   Bypass OS distro check\n"
+                printf "  -y, --yes Skip confirmation prompts\n"
                 printf "  --help    Show this help\n"
                 exit 0
                 ;;
