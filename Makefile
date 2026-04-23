@@ -1,4 +1,4 @@
-.PHONY: all build test vet lint coverage clean fmt cross-build
+.PHONY: all build test vet lint coverage clean fmt cross-build docs
 
 all: vet lint test build
 
@@ -32,3 +32,6 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 
 cross-build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags "$(LDFLAGS)" -o gow-linux ./cmd/gow/
+
+docs:
+	go run ./cmd/gow/ generate-docs docs/
