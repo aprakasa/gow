@@ -154,7 +154,7 @@ _verify_binary() {
         exit 1
     fi
     local version
-    version=$("$GOW_BIN" --version 2>/dev/null || echo "unknown")
+    version=$("$GOW_BIN" --version 2>/dev/null | awk '{print $NF}' || echo "unknown")
     _info "Installed: gow $version"
 }
 
