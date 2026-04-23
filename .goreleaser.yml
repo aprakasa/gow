@@ -1,7 +1,8 @@
 version: 2
 
 builds:
-  - main: ./cmd/gow
+  - id: gow
+    main: ./cmd/gow
     binary: gow
     goos:
       - linux
@@ -14,6 +15,7 @@ builds:
 
 archives:
   - format: binary
+    name_template: "gow"
 
 checksum:
   name_template: "checksums.txt"
