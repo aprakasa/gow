@@ -187,6 +187,11 @@ _install_flow() {
     _verify_binary
     _create_dirs
 
+    # Clean up the script itself if it was saved as a file
+    if [ -f "$0" ] && [ "$(basename "$0")" != "bash" ] && [ "$(basename "$0")" != "sudo" ]; then
+        rm -f "$0"
+    fi
+
     printf "\n"
     if [ "$ERRORS" -gt 0 ]; then
         _error "Install completed with errors. See $INSTALL_LOG"
