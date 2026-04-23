@@ -132,11 +132,15 @@ _download_binary() {
         exit 1
     fi
 
-    if ! file "$tmp" | grep -q "ELF.*executable\|ELF.*shared object"; then
-        _error "Downloaded file is not a valid binary. Expected ELF executable."
-        _error "You may be on an unsupported architecture (only amd64 is supported)."
-        rm -f "$tmp"
-        exit 1
+    if command -v file >/dev/null 2>&1; then
+        if ! file "$tmp" | grep -q "ELF.*executable\|ELF.*shared object"; then
+            _error "Downloaded file is not a valid binary. Expected ELF executable."
+            _error "You may be on an unsupported architecture (only amd64 is supported)."
+            rm -f "$tmp"
+            exit 1
+        fi
+    else
+        _warn "'file' not found, skipping binary validation"
     fi
 
     mv "$tmp" "$GOW_BIN"
