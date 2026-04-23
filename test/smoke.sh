@@ -6,7 +6,7 @@ set -euo pipefail
 tag="gow-smoke-$RANDOM"
 image="gow-smoke:$tag"
 container="smoke-$tag"
-trap "docker rm -f $container > /dev/null 2>&1 || true; docker rmi $image > /dev/null 2>&1 || true" EXIT
+trap 'docker rm -f $container > /dev/null 2>&1 || true; docker rmi $image > /dev/null 2>&1 || true' EXIT
 
 echo "==> Building smoke image..."
 docker build -f Dockerfile.smoke -t "$image" .
