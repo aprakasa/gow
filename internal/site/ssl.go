@@ -133,6 +133,15 @@ func (m *Manager) EnableSSL(ctx context.Context, name string, opts SSLOptions) e
 		return fmt.Errorf("site: ssl %s: set FORCE_SSL_ADMIN: %w", name, err)
 	}
 
+	if site, ok := m.store.Find(name); ok && (site.Type == "" || site.Type == "wp") {
+		if err := m.runner.Run(ctx, stack.WPCLIBinPath, "search-replace",
+			"http://"+name, "https://"+name,
+			"--all-tables", "--allow-root", "--path="+docRoot,
+		); err != nil {
+			return fmt.Errorf("site: ssl %s: search-replace http→https: %w", name, err)
+		}
+	}
+
 	if err := m.Reconcile(ctx); err != nil {
 		return fmt.Errorf("site: ssl %s: reconcile: %w", name, err)
 	}
