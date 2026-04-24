@@ -127,8 +127,10 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("create database: %w", err)
 	}
 	fmt.Fprintln(w, " OK")
+	dbPrefix := "wp_" + strings.ToLower(dbsql.Password(6)) + "_"
 	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "create",
 		"--dbname="+dbName, "--dbuser="+dbUser, "--dbpass="+dbPass,
+		"--dbprefix="+dbPrefix,
 		"--allow-root", "--path="+docRoot,
 	); err != nil {
 		return fmt.Errorf("wp config create: %w", err)
