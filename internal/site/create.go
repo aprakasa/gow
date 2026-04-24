@@ -101,13 +101,11 @@ func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset
 	rollbacks = append(rollbacks, func() { _ = os.RemoveAll(siteRoot) })
 
 	if site.UnixUser != "" {
-		createdUser := false
 		if !m.userExists(ctx, site.UnixUser) {
 			if err := m.runner.Run(ctx, "useradd", "--system", "--no-create-home",
 				"--shell", "/usr/sbin/nologin", site.UnixUser); err != nil {
 				return fmt.Errorf("site: create %s: create user: %w", name, err)
 			}
-			createdUser = true
 			rollbacks = append(rollbacks, func() { _ = m.runner.Run(context.Background(), "userdel", site.UnixUser) })
 		}
 		if err := m.runner.Run(ctx, "chown", "-R", site.UnixUser+":"+site.UnixUser, siteRoot); err != nil {
@@ -116,7 +114,6 @@ func (m *Manager) Create(ctx context.Context, name, siteType, phpVersion, preset
 		if err := m.runner.Run(ctx, "usermod", "-aG", "redis", site.UnixUser); err != nil {
 			return fmt.Errorf("site: create %s: add to redis group: %w", name, err)
 		}
-		_ = createdUser // suppress ineffective-assign lint if the flag is unused
 	}
 
 	if siteType == "html" {
