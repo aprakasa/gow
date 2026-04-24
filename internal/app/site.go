@@ -116,6 +116,12 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 			_ = d.DBCleanup(domain)
 			return err
 		}
+		// Re-reconcile to write wp-config.php settings (memory limit,
+		// max_execution_time) that were skipped during the first reconcile
+		// because wp-config.php did not exist yet.
+		if err := m.Reconcile(d.Ctx); err != nil {
+			return fmt.Errorf("reconcile after wp install: %w", err)
+		}
 	} else {
 		fmt.Fprintf(d.Stdout, "Site %s created.\n", domain)
 	}

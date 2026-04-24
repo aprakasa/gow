@@ -242,11 +242,14 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 	// litespeed SAPI does not apply .user.ini settings.
 	if alloc.PHPMemoryLimitMB > 0 && s.Type == "wp" {
 		docRoot := filepath.Join(siteRoot, "htdocs")
-		if err := writeWPConfigMemoryLimit(docRoot, alloc.PHPMemoryLimitMB); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: wp-config memory limit for %s: %v\n", s.Name, err)
-		}
-		if err := writeWPConfigMaxExecutionTime(docRoot); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: wp-config max_execution_time for %s: %v\n", s.Name, err)
+		wpConfig := filepath.Join(docRoot, "wp-config.php")
+		if _, err := os.Stat(wpConfig); err == nil {
+			if err := writeWPConfigMemoryLimit(docRoot, alloc.PHPMemoryLimitMB); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: wp-config memory limit for %s: %v\n", s.Name, err)
+			}
+			if err := writeWPConfigMaxExecutionTime(docRoot); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: wp-config max_execution_time for %s: %v\n", s.Name, err)
+			}
 		}
 	}
 
