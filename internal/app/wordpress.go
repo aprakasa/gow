@@ -277,6 +277,13 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return err
 	}
 
+	// Final ownership fix: WP-CLI runs as root, so any files it created
+	// during install (upgrade dir, uploads, object-cache.php, etc.) are
+	// root-owned. Re-chown the entire document root one last time.
+	if err := r.Run(ctx, "chown", "-R", unixUser+":"+unixUser, docRoot); err != nil {
+		return fmt.Errorf("final chown docroot: %w", err)
+	}
+
 	fmt.Fprintf(w, "\n  URL:      http://%s\n", domain)
 	fmt.Fprintf(w, "  Username: %s\n", adminUser)
 	fmt.Fprintf(w, "  Password: %s\n", adminPass)
