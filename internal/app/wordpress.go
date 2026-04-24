@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aprakasa/gow/internal/dbsql"
+	"github.com/aprakasa/gow/internal/site"
 	"github.com/aprakasa/gow/internal/stack"
 )
 
@@ -210,10 +211,16 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 	// Create writable .htaccess so WP can write rewrite rules without warnings.
 	// OLS ignores .htaccess (rules are in vhconf.conf), but the file needs to
 	// exist and be writable to suppress the wp-admin "update your .htaccess" notice.
-	if err := r.Run(ctx, "touch", filepath.Join(docRoot, ".htaccess")); err != nil {
+	// Own it by the site's isolated user so PHP can write without world-writable perms.
+	htaccess := filepath.Join(docRoot, ".htaccess")
+	if err := r.Run(ctx, "touch", htaccess); err != nil {
 		return fmt.Errorf("create .htaccess: %w", err)
 	}
-	if err := r.Run(ctx, "chmod", "666", filepath.Join(docRoot, ".htaccess")); err != nil {
+	unixUser := site.UserName(domain)
+	if err := r.Run(ctx, "chown", unixUser+":"+unixUser, htaccess); err != nil {
+		return fmt.Errorf("chown .htaccess: %w", err)
+	}
+	if err := r.Run(ctx, "chmod", "644", htaccess); err != nil {
 		return fmt.Errorf("chmod .htaccess: %w", err)
 	}
 
