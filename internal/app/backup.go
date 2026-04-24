@@ -24,6 +24,7 @@ func RunBackup(cfg CLIConfig, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	path, err := m.Backup(d.Ctx, domain)
 	if err != nil {
 		return err
@@ -41,6 +42,7 @@ func RunRestore(cfg CLIConfig, domain, archivePath string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	fmt.Fprintf(d.Stdout, "Restoring %s from %s...\n", domain, archivePath)
 	if err := m.Restore(d.Ctx, domain, archivePath); err != nil {
 		return err
@@ -64,6 +66,7 @@ func RunClone(cfg CLIConfig, src, dst string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	fmt.Fprintf(d.Stdout, "Cloning %s → %s...\n", src, dst)
 	if err := m.Clone(d.Ctx, src, dst); err != nil {
 		return err
@@ -90,6 +93,7 @@ func RunBackupSchedule(cfg CLIConfig, domain, schedule string, retain int, d Dep
 	if err != nil {
 		return err
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 	if _, ok := store.Find(domain); !ok {
 		return fmt.Errorf("site %q not found", domain)
 	}
@@ -118,6 +122,7 @@ func RunBackupUnschedule(cfg CLIConfig, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 	s, ok := store.Find(domain)
 	if !ok {
 		return fmt.Errorf("site %q not found", domain)
@@ -153,14 +158,12 @@ func RunBackupUnschedule(cfg CLIConfig, domain string, d Deps) error {
 // RunBackupCron is the entry point for the hidden backup-cron command.
 // It iterates all sites with a backup schedule, runs backups, and prunes.
 func RunBackupCron(cfg CLIConfig, d Deps) error {
-	store, err := d.OpenStore(cfg.StateFile)
-	if err != nil {
-		return fmt.Errorf("open state: %w", err)
-	}
 	m, err := NewManager(cfg, d)
 	if err != nil {
 		return fmt.Errorf("create manager: %w", err)
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
+	store := m.Store()
 
 	now := time.Now().UTC()
 	for _, s := range store.Sites() {

@@ -51,6 +51,19 @@ func NewManager(store *state.Store, ctrl ols.Controller, specs system.Specs, pol
 	}
 }
 
+// Close releases the state store's file lock. Safe to call multiple times;
+// callers that defer Close at a CLI entry should not also Close the store
+// directly.
+func (m *Manager) Close() error {
+	return m.store.Close()
+}
+
+// Store returns the underlying state store. Callers must not Close it
+// directly — Manager.Close() owns the store's lifetime.
+func (m *Manager) Store() *state.Store {
+	return m.store
+}
+
 // Reconcile recomputes allocations for all sites, renders their OLS configs,
 // registers virtualHosts in httpd_config.conf, and triggers a graceful OLS
 // reload. With zero sites it returns immediately without touching OLS.

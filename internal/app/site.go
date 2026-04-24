@@ -72,6 +72,7 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 		if err != nil {
 			return err
 		}
+		defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 		if err := m.Create(d.Ctx, domain, sf.SiteType, "", "standard", "", "", nil); err != nil {
 			return err
 		}
@@ -106,6 +107,7 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	if err := m.Create(d.Ctx, domain, sf.SiteType, phpVer, preset, cacheMode, sf.Multisite, custom); err != nil {
 		return err
 	}
@@ -149,6 +151,7 @@ func RunUpdate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	if err := m.Update(d.Ctx, domain, sf.PHP, preset, custom, sf.Isolate); err != nil {
 		return err
 	}
@@ -165,6 +168,7 @@ func RunInfo(cfg CLIConfig, sf SiteFlags, domain string, w io.Writer, d Deps) er
 	if err != nil {
 		return err
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 	s, ok := store.Find(domain)
 	if !ok {
 		return fmt.Errorf("site %q not found", domain)
@@ -259,6 +263,7 @@ func RunOnline(cfg CLIConfig, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	if err := m.Online(d.Ctx, domain); err != nil {
 		return err
 	}
@@ -275,6 +280,7 @@ func RunOffline(cfg CLIConfig, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	if err := m.Offline(d.Ctx, domain); err != nil {
 		return err
 	}
@@ -287,10 +293,12 @@ func RunDelete(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err := ValidateDomain(domain); err != nil {
 		return err
 	}
-	store, err := d.OpenStore(cfg.StateFile)
+	m, err := NewManager(cfg, d)
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
+	store := m.Store()
 	if _, ok := store.Find(domain); !ok {
 		return fmt.Errorf("site %q not found", domain)
 	}
@@ -311,11 +319,6 @@ func RunDelete(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 		if resp != "y" && resp != "Y" {
 			return fmt.Errorf("aborted")
 		}
-	}
-
-	m, err := NewManager(cfg, d)
-	if err != nil {
-		return err
 	}
 
 	site, _ := store.Find(domain)
@@ -365,6 +368,7 @@ func RunSSL(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	opts := site.SSLOptions{
 		Email:    sf.SSLEmail,
 		Staging:  sf.SSLStaging,
@@ -385,6 +389,7 @@ func RunList(cfg CLIConfig, w io.Writer, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 
 	return formatSites(w, store.Sites())
 }
@@ -400,6 +405,7 @@ func RunReconcile(cfg CLIConfig, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	return m.Reconcile(d.Ctx)
 }
 
@@ -419,6 +425,7 @@ func RunStatus(cfg CLIConfig, w io.Writer, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 
 	sites := store.Sites()
 	if len(sites) == 0 {

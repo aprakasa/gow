@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
@@ -94,6 +95,23 @@ func newTestEnv(t *testing.T) *testEnv {
 			LogDir:     filepath.Join(dir, "logs"),
 		},
 	}
+}
+
+// newTestEnvRealStore mirrors newTestEnv but wires OpenStore to state.Open so
+// every NewManager call acquires a fresh lock — matching production behavior
+// and required for any test that asserts lock release.
+func newTestEnvRealStore(t *testing.T) *testEnv {
+	t.Helper()
+	e := newTestEnv(t)
+	// The base env pre-opens a store and reuses it. Close that one so the
+	// test file lock is released and subsequent state.Open calls succeed.
+	if s, err := e.deps.OpenStore(e.cfg.StateFile); err == nil {
+		_ = s.Close()
+	}
+	e.deps.OpenStore = func(path string) (*state.Store, error) {
+		return state.OpenWithTimeout(path, 2*time.Second)
+	}
+	return e
 }
 
 const baseOLSConf = `serverName localhost
@@ -738,4 +756,47 @@ func TestRemoveGlobalBackupCron_Idempotent(t *testing.T) {
 	if err := removeGlobalBackupCron(); err != nil {
 		t.Fatalf("removeGlobalBackupCron on nonexistent file: %v", err)
 	}
+}
+
+// TestRunCreate_ReleasesLockOnSuccess verifies that after a successful
+// RunCreate, the state file lock is released — a fresh OpenWithTimeout on
+// the same path must succeed within 100ms. If the lock leaked, this would
+// block for defaultLockTimeout (5 minutes) and then fail.
+func TestRunCreate_ReleasesLockOnSuccess(t *testing.T) {
+	e := newTestEnvRealStore(t)
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "a.test", e.deps); err != nil {
+		t.Fatalf("RunCreate() = %v", err)
+	}
+
+	s, err := state.OpenWithTimeout(e.cfg.StateFile, 100*time.Millisecond)
+	if err != nil {
+		t.Fatalf("state lock still held after RunCreate: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+}
+
+// TestRunCreate_ReleasesLockOnFailure verifies that when RunCreate fails
+// after the manager has opened the store, the lock is still released by
+// the deferred Close. Forces failure via DetectSpecs returning an error
+// (triggered inside NewManager before the manager is built, but the
+// symmetric path — a later failure after NewManager — also needs the
+// defer to run; we exercise that via an invalid preset passed through to
+// Manager.Create).
+func TestRunCreate_ReleasesLockOnFailure(t *testing.T) {
+	e := newTestEnvRealStore(t)
+
+	// Invalid preset — resolveTuneFlags accepts arbitrary strings as preset
+	// names, so the failure surfaces inside Manager.Create (after NewManager
+	// has opened the store). This is the path where defer m.Close() matters.
+	err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "nonexistent", PHP: "83"}, "b.test", e.deps)
+	if err == nil {
+		t.Fatal("expected RunCreate to fail with invalid preset")
+	}
+
+	s, openErr := state.OpenWithTimeout(e.cfg.StateFile, 100*time.Millisecond)
+	if openErr != nil {
+		t.Fatalf("state lock still held after failed RunCreate: %v", openErr)
+	}
+	t.Cleanup(func() { _ = s.Close() })
 }

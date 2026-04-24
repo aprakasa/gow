@@ -149,6 +149,7 @@ func RunStackPurge(cfg CLIConfig, sf StackFlags, d Deps) error {
 	if err != nil {
 		return fmt.Errorf("open state: %w", err)
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 	sites := store.Sites()
 
 	names, phpVersions := resolveStackFlags(sf)

@@ -27,6 +27,7 @@ func RunFlush(cfg CLIConfig, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	if err := m.Flush(d.Ctx, domain); err != nil {
 		return err
 	}
@@ -43,6 +44,7 @@ func RunWP(cfg CLIConfig, domain string, args []string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	return m.WP(d.Ctx, domain, d.Stdin, d.Stdout, d.Stderr, args)
 }
 
@@ -66,6 +68,7 @@ func RunLog(cfg CLIConfig, lf LogFlags, domain string, d Deps) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
 	return m.Log(d.Ctx, domain, mode, lines, lf.Follow, d.Stdout, d.Stderr)
 }
 
@@ -75,6 +78,7 @@ func RunMetrics(cfg CLIConfig, w io.Writer, d Deps, jsonOutput bool) error {
 	if err != nil {
 		return err
 	}
+	defer store.Close() //nolint:errcheck // lock release; Close always returns nil
 	sites := store.Sites()
 	c := metrics.NewCollector(d.NewRunner(), cfg.WebRoot)
 	sm, siteM, err := c.Collect(d.Ctx, sites)
