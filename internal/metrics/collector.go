@@ -75,8 +75,8 @@ func (c *Collector) Collect(ctx context.Context, sites []state.Site) (ServerMetr
 	return sm, siteM, nil
 }
 
-func (c *Collector) collectOLS(_ context.Context, sites []state.Site, sm *ServerMetrics, siteM []SiteMetrics) {
-	out, err := c.runner.Output(context.Background(), "cat", olsReportPath)
+func (c *Collector) collectOLS(ctx context.Context, sites []state.Site, sm *ServerMetrics, siteM []SiteMetrics) {
+	out, err := c.runner.Output(ctx, "cat", olsReportPath)
 	if err != nil {
 		return
 	}
@@ -92,28 +92,28 @@ func (c *Collector) collectOLS(_ context.Context, sites []state.Site, sm *Server
 	}
 }
 
-func (c *Collector) collectRedis(_ context.Context, sm *ServerMetrics) {
-	memOut, err := c.runner.Output(context.Background(), "redis-cli", "info", "memory")
+func (c *Collector) collectRedis(ctx context.Context, sm *ServerMetrics) {
+	memOut, err := c.runner.Output(ctx, "redis-cli", "info", "memory")
 	if err != nil {
 		return
 	}
 	sm.RedisUsedMB = parseRedisMemory(memOut)
 
-	statsOut, err := c.runner.Output(context.Background(), "redis-cli", "info", "stats")
+	statsOut, err := c.runner.Output(ctx, "redis-cli", "info", "stats")
 	if err != nil {
 		return
 	}
 	sm.RedisHitRate = parseRedisHitRate(statsOut)
 }
 
-func (c *Collector) collectMariaDB(_ context.Context, sites []state.Site, sm *ServerMetrics, siteM []SiteMetrics) {
+func (c *Collector) collectMariaDB(ctx context.Context, sites []state.Site, sm *ServerMetrics, siteM []SiteMetrics) {
 	// Connection count.
-	connOut, err := c.runner.Output(context.Background(), "mariadb", "-e",
+	connOut, err := c.runner.Output(ctx, "mariadb", "-e",
 		"SHOW STATUS LIKE 'Threads_connected'")
 	if err == nil {
 		sm.MariaDBConns = parseMariaDBValue(connOut)
 	}
-	maxOut, err := c.runner.Output(context.Background(), "mariadb", "-e",
+	maxOut, err := c.runner.Output(ctx, "mariadb", "-e",
 		"SHOW VARIABLES LIKE 'max_connections'")
 	if err == nil {
 		sm.MariaDBMaxConns = parseMariaDBValue(maxOut)
@@ -125,7 +125,7 @@ func (c *Collector) collectMariaDB(_ context.Context, sites []state.Site, sm *Se
 			continue
 		}
 		db := dbsql.DBName(s.Name)
-		out, err := c.runner.Output(context.Background(), "mariadb", "-e",
+		out, err := c.runner.Output(ctx, "mariadb", "-e",
 			fmt.Sprintf("SELECT ROUND(SUM(data_length+index_length)/1024/1024, 1) FROM information_schema.TABLES WHERE table_schema='%s'", db))
 		if err == nil {
 			siteM[i].DBSizeMB = parseMariaDBFloat(out)
@@ -134,10 +134,10 @@ func (c *Collector) collectMariaDB(_ context.Context, sites []state.Site, sm *Se
 	}
 }
 
-func (c *Collector) collectDiskAndSlowlog(_ context.Context, sites []state.Site, sm *ServerMetrics, siteM []SiteMetrics) {
+func (c *Collector) collectDiskAndSlowlog(ctx context.Context, sites []state.Site, sm *ServerMetrics, siteM []SiteMetrics) {
 	for i, s := range sites {
 		path := c.webRoot + "/" + s.Name
-		out, err := c.runner.Output(context.Background(), "du", "-sb", path)
+		out, err := c.runner.Output(ctx, "du", "-sb", path)
 		if err == nil {
 			siteM[i].DiskMB = parseDuBytes(out)
 			sm.TotalDiskMB += siteM[i].DiskMB
@@ -145,7 +145,7 @@ func (c *Collector) collectDiskAndSlowlog(_ context.Context, sites []state.Site,
 
 		if s.Type != "html" {
 			slowPath := "/usr/local/lsws/logs/php_slowlog_" + s.Name + ".log"
-			out, err := c.runner.Output(context.Background(), "wc", "-l", slowPath)
+			out, err := c.runner.Output(ctx, "wc", "-l", slowPath)
 			if err == nil {
 				siteM[i].SlowLogCount = parseWcLines(out)
 			}
