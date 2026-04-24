@@ -218,9 +218,9 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		hc.SetVHostSSL(s.Name, s.CertPath, s.KeyPath)
 	}
 
-	// Write .user.ini so PHP picks up the allocated memory_limit. Without
-	// this, PHP falls back to the system default (usually 128M) regardless
-	// of the PHP_MEMORY_LIMIT env var in the OLS extprocessor config.
+	// Write .user.ini as a fallback for environments that support it
+	// (standard CGI/FastCGI). The litespeed SAPI ignores it, so we also
+	// set values via wp-config.php and a global PHP drop-in below.
 	if alloc.PHPMemoryLimitMB > 0 && s.Type != "html" {
 		docRoot := filepath.Join(siteRoot, "htdocs")
 		if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // web root
@@ -236,14 +236,27 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		}
 	}
 
-	// Set WP_MEMORY_LIMIT in wp-config.php so WordPress doesn't cap itself
-	// at its default 40M, overriding the PHP memory_limit at runtime.
+	// Set WP_MEMORY_LIMIT and max_execution_time in wp-config.php.
+	// WordPress caps its own memory at 40M via WP_MEMORY_LIMIT, overriding
+	// any php.ini value. max_execution_time needs ini_set() because the
+	// litespeed SAPI does not apply .user.ini settings.
 	if alloc.PHPMemoryLimitMB > 0 && s.Type == "wp" {
 		docRoot := filepath.Join(siteRoot, "htdocs")
 		if err := writeWPConfigMemoryLimit(docRoot, alloc.PHPMemoryLimitMB); err != nil {
-			// Non-fatal: wp-config.php may not exist for brand-new sites
-			// that haven't run WP install yet.
 			fmt.Fprintf(os.Stderr, "warning: wp-config memory limit for %s: %v\n", s.Name, err)
+		}
+		if err := writeWPConfigMaxExecutionTime(docRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: wp-config max_execution_time for %s: %v\n", s.Name, err)
+		}
+	}
+
+	// Write a global PHP drop-in for max_input_vars. It is PHP_INI_PERDIR
+	// so ini_set() won't work, and the litespeed SAPI ignores .user.ini.
+	// This applies to all sites using the same PHP version, which is fine
+	// since every WordPress site benefits from a higher limit.
+	if alloc.PHPMemoryLimitMB > 0 && s.PHPVersion != "" && s.Type != "html" {
+		if err := writePHPDropIn(s.PHPVersion); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: php drop-in for PHP %s: %v\n", s.PHPVersion, err)
 		}
 	}
 
@@ -260,42 +273,26 @@ func renderMaintenanceVHost(data template.VHostData) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	htdocsDir := filepath.Join(data.WebRoot, "htdocs")
-	if err := os.MkdirAll(htdocsDir, 0o755); err != nil { //nolint:gosec // lsws must traverse
-		return "", fmt.Errorf("create htdocs dir: %w", err)
+	docRoot := filepath.Join(data.WebRoot, "htdocs")
+	if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // web root
+		return "", err
 	}
-	phpPath := filepath.Join(htdocsDir, "maintenance.php")
-	if err := os.WriteFile(phpPath, []byte(maintPHP), 0o644); err != nil { //nolint:gosec // lsws must read
-		return "", fmt.Errorf("write maintenance page: %w", err)
+	if err := os.WriteFile(filepath.Join(docRoot, "maintenance.php"), []byte(maintPHP), 0o644); err != nil { //nolint:gosec // generated PHP, not secret
+		return "", err
 	}
 	return template.RenderVHost("maintenance", data)
 }
 
-// siteType returns the template variant name for a site. Sites created before
-// the Type field was added default to "wp" for backward compatibility.
+// lsphpBase is the parent directory for LSPHP installations.
+const lsphpBase = "/usr/local/lsws"
+
+// siteType returns the template variant name for a site.
 func siteType(s state.Site) string {
-	if s.Type == "" {
-		return "wp"
+	t := s.Type
+	if t == "" {
+		t = "wp"
 	}
-	return s.Type
-}
-
-// SetLogDir overrides the per-site log directory (used by tests and the app
-// layer to point at a temp directory instead of /var/log/lsws).
-func (m *Manager) SetLogDir(dir string) {
-	m.logDir = dir
-}
-
-// SetLogrotateConfPath overrides the logrotate config file path (used by tests
-// to avoid writing to /etc/logrotate.d).
-func (m *Manager) SetLogrotateConfPath(path string) {
-	m.logrotateConfPath = path
-}
-
-// SetDefaultPHP sets the fallback PHP version used when rendering maintenance
-// mode for sites that have no PHP version (e.g. HTML sites).
-func (m *Manager) SetDefaultPHP(ver string) {
-	m.defaultPHP = ver
+	return t
 }
 
 // UserName returns the system user name for a site domain.
@@ -313,6 +310,9 @@ func needsIsolation(siteType string) bool {
 
 // wpMemoryLimitRE matches a WP_MEMORY_LIMIT define line in wp-config.php.
 var wpMemoryLimitRE = regexp.MustCompile(`(?m)^\s*define\s*\(\s*['"]WP_MEMORY_LIMIT['"]\s*,\s*['"][^'"]*['"]\s*\)\s*;`)
+
+// wpMaxExecTimeRE matches a max_execution_time ini_set line in wp-config.php.
+var wpMaxExecTimeRE = regexp.MustCompile(`(?m)^\s*ini_set\s*\(\s*['"]max_execution_time['"]\s*,\s*['"]?\d+['"]?\s*\)\s*;`)
 
 // writeWPConfigMemoryLimit sets or updates WP_MEMORY_LIMIT in wp-config.php.
 // If the constant already exists it is replaced; otherwise it is inserted
@@ -334,6 +334,63 @@ func writeWPConfigMemoryLimit(docRoot string, limitMB uint64) error {
 		content = strings.Replace(content, marker, replacement+"\n\n"+marker, 1)
 	}
 	return os.WriteFile(path, []byte(content), 0o644) //nolint:gosec // wp-config, perms set by installer
+}
+
+// writeWPConfigMaxExecutionTime adds ini_set('max_execution_time', 3600) to
+// wp-config.php. The litespeed SAPI ignores .user.ini, so ini_set() is the
+// only reliable way to raise the limit from the default 30 seconds.
+func writeWPConfigMaxExecutionTime(docRoot string) error {
+	path := filepath.Join(docRoot, "wp-config.php")
+	data, err := os.ReadFile(path) //nolint:gosec // derived from validated site name
+	if err != nil {
+		return fmt.Errorf("read wp-config.php: %w", err)
+	}
+	content := string(data)
+	replacement := "ini_set('max_execution_time', '3600');"
+
+	if wpMaxExecTimeRE.MatchString(content) {
+		content = wpMaxExecTimeRE.ReplaceAllString(content, replacement)
+	} else {
+		marker := "/* That's all, stop editing!"
+		content = strings.Replace(content, marker, replacement+"\n\n"+marker, 1)
+	}
+	return os.WriteFile(path, []byte(content), 0o644) //nolint:gosec // wp-config, perms set by installer
+}
+
+// writePHPDropIn creates a global drop-in ini file for the given PHP version
+// that sets max_input_vars. The litespeed SAPI ignores .user.ini, and
+// max_input_vars is PHP_INI_PERDIR so ini_set() cannot change it at runtime.
+// The drop-in lives in the LSPHP scan directory and applies to all sites.
+func writePHPDropIn(phpVer string) error {
+	major := phpVer[:len(phpVer)-1] // "83" → "8.3" won't work; need "8.3"
+	if len(phpVer) < 2 {
+		return nil
+	}
+	major = string(phpVer[0]) + "." + string(phpVer[1:]) // "83" → "8.3"
+	scanDir := filepath.Join(lsphpBase, "lsphp"+phpVer, "etc", "php", major, "mods-available")
+	if _, err := os.Stat(scanDir); err != nil {
+		return fmt.Errorf("php scan dir %s not found: %w", scanDir, err)
+	}
+	iniPath := filepath.Join(scanDir, "99-gow.ini")
+	return os.WriteFile(iniPath, []byte("; Managed by gow — do not edit.\nmax_input_vars = 5000\n"), 0o644) //nolint:gosec // php config, not secret
+}
+
+// SetLogDir overrides the per-site log directory (used by tests and the app
+// layer to point at a temp directory instead of /var/log/lsws).
+func (m *Manager) SetLogDir(dir string) {
+	m.logDir = dir
+}
+
+// SetLogrotateConfPath overrides the logrotate config file path (used by tests
+// to avoid writing to /etc/logrotate.d).
+func (m *Manager) SetLogrotateConfPath(path string) {
+	m.logrotateConfPath = path
+}
+
+// SetDefaultPHP sets the fallback PHP version used when rendering maintenance
+// mode for sites that have no PHP version (e.g. HTML sites).
+func (m *Manager) SetDefaultPHP(ver string) {
+	m.defaultPHP = ver
 }
 
 // userExists checks whether a system user exists by running `id <name>`.
