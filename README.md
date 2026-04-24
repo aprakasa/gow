@@ -17,14 +17,16 @@ A single-command CLI tool for managing WordPress (and plain PHP/HTML) sites on O
 
 ## Features
 
-- **Full Stack Installation** — OpenLiteSpeed, LSPHP, MariaDB, Redis, WP-CLI, Composer, Certbot
-- **Site Lifecycle Management** — Create, update, delete, clone, backup, and restore WordPress sites
-- **Automatic SSL/TLS** — Let's Encrypt integration with HTTP-01 and DNS-01 (wildcard) support
-- **Smart Resource Allocation** — Auto-sizes PHP worker pools based on server RAM and CPU
+- **Single Binary** — Zero runtime dependencies, one static binary
+- **Full Stack in One Command** — OpenLiteSpeed, LSPHP (8.1–8.5), MariaDB, Redis, WP-CLI, Composer, Certbot
+- **Site Lifecycle** — Create, update, delete, clone, backup, and restore WordPress and HTML sites
+- **Auto-Renewing SSL** — Let's Encrypt with HTTP-01 and DNS-01 (wildcard), deploy hook reloads OLS on renewal
+- **Performance Tuning** — Six presets (lite → heavy) with auto-sized PHP workers based on server RAM and CPU
 - **Per-Site Isolation** — Dedicated system users for multi-tenant security
 - **Built-in Caching** — LSCache page cache + Redis object cache wired automatically
-- **Live Metrics** — Disk, database, Redis, and OLS request monitoring
-- **Backup Scheduling** — Automated daily/weekly backups with retention policies
+- **Crash-Safe Operations** — File-level state locking, automatic rollback on failure, idempotent retry with `--force`
+- **Live Monitoring** — Disk, database, Redis, and OLS request metrics
+- **Scheduled Backups** — Daily or weekly with configurable retention
 - **WP-CLI Passthrough** — Run `wp` commands scoped to any site
 
 ## Requirements
@@ -67,7 +69,7 @@ chmod +x /usr/local/bin/gow
 Uninstall:
 
 ```bash
-sudo install.sh --purge
+sudo bash install.sh --purge
 ```
 
 ## Usage
@@ -76,7 +78,13 @@ Provision the server and create a WordPress site:
 
 ```bash
 sudo gow stack install
-sudo gow site create example.com --type wp --tune blog --php 83
+sudo gow site create example.com --type wp --tune standard --php 83
+```
+
+Plain HTML or PHP site?
+
+```bash
+sudo gow site create static.example.com --type html
 ```
 
 Need SSL?
@@ -97,6 +105,13 @@ WordPress multisite?
 sudo gow site create network.example.com --type wp --multisite subdirectory
 ```
 
+Update PHP version or tuning?
+
+```bash
+sudo gow site update example.com --php 84
+sudo gow site update example.com --tune business
+```
+
 Want daily backups?
 
 ```bash
@@ -110,9 +125,11 @@ Clone a site for staging?
 sudo gow site clone example.com staging.example.com
 ```
 
-Check server health?
+Check logs or server health?
 
 ```bash
+gow site log example.com                    # error log (default)
+gow site log example.com --access           # access log
 gow status
 gow metrics
 ```
@@ -124,11 +141,11 @@ gow metrics
 | Preset | PHP Memory | Workers | Use Case |
 |--------|-----------|---------|----------|
 | `lite` | 128 MB | 64 MB | Small static sites |
-| `standard` | 256 MB | 128 MB | Typical blog |
+| `standard` | 256 MB | 128 MB | Typical blog (alias: `blog`) |
 | `business` | 384 MB | 192 MB | High-traffic site |
 | `woocommerce` | 512 MB | 256 MB | WooCommerce store |
 | `heavy` | 768 MB | 384 MB | Large multisite |
-| `custom` | user-defined | user-defined | Full control |
+| `custom` | user-defined | user-defined | Full control (`--memory` and `--workers`) |
 
 Workers are auto-sized from server RAM and CPU. Override defaults with `/etc/gow/policy.yaml`.
 
@@ -146,6 +163,10 @@ make cross-build # linux/amd64 cross-compile
 CI runs on every push and PR: build, vet, test, golangci-lint, govulncheck, and smoke tests.
 
 Releases are cut by pushing a `v*` tag — GoReleaser builds the binary and publishes a GitHub release.
+
+## Acknowledgements
+
+`gow` drew inspiration from [EasyEngine](https://github.com/EasyEngine/easyengine) and [WordOps](https://github.com/WordOps/WordOps).
 
 ## License
 
