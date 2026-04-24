@@ -83,6 +83,9 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 	// Prompt for WP admin credentials.
 	fmt.Fprintln(w, "\n  WordPress setup:")
 	adminUser := promptDefault(w, "Admin username", "admin")
+	if err := ValidateWPUsername(adminUser); err != nil {
+		return err
+	}
 	adminEmail := promptDefault(w, "Admin email", "admin@"+domain)
 	adminPass := promptDefault(w, "Admin password", "auto-generated")
 	if adminPass == "auto-generated" {
@@ -205,6 +208,19 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		); err != nil {
 			return fmt.Errorf("wp core install: %w", err)
 		}
+	}
+	fmt.Fprintln(w, " OK")
+
+	// Verify the admin user was actually created.
+	fmt.Fprint(w, "  Verifying admin user...")
+	out, err := r.Output(ctx, stack.WPCLIBinPath, "user", "get", adminUser,
+		"--field=user_login", "--allow-root", "--path="+docRoot)
+	if err != nil {
+		return fmt.Errorf("admin user %q not found after install: %w", adminUser, err)
+	}
+	actualUser := strings.TrimSpace(out)
+	if actualUser != adminUser {
+		return fmt.Errorf("admin user mismatch: requested %q, got %q", adminUser, actualUser)
 	}
 	fmt.Fprintln(w, " OK")
 
