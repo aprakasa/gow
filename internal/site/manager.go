@@ -362,11 +362,10 @@ func writeWPConfigMaxExecutionTime(docRoot string) error {
 // max_input_vars is PHP_INI_PERDIR so ini_set() cannot change it at runtime.
 // The drop-in lives in the LSPHP scan directory and applies to all sites.
 func writePHPDropIn(phpVer string) error {
-	major := phpVer[:len(phpVer)-1] // "83" → "8.3" won't work; need "8.3"
 	if len(phpVer) < 2 {
 		return nil
 	}
-	major = string(phpVer[0]) + "." + string(phpVer[1:]) // "83" → "8.3"
+	major := string(phpVer[0]) + "." + phpVer[1:] // "83" → "8.3"
 	scanDir := filepath.Join(lsphpBase, "lsphp"+phpVer, "etc", "php", major, "mods-available")
 	if _, err := os.Stat(scanDir); err != nil {
 		return fmt.Errorf("php scan dir %s not found: %w", scanDir, err)
