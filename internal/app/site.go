@@ -437,6 +437,7 @@ func appendLiveStatus(w io.Writer, cfg CLIConfig, d Deps) {
 	c := metrics.NewCollector(d.NewRunner(), cfg.WebRoot)
 	sm, _, err := c.Collect(d.Ctx, nil)
 	if err != nil {
+		fmt.Fprintf(d.Stderr, "warning: live metrics unavailable: %v\n", err)
 		return
 	}
 	parts := []string{}
