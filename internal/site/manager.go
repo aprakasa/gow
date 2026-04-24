@@ -216,6 +216,22 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		hc.AddSSLMapEntry(s.Name)
 		hc.SetVHostSSL(s.Name, s.CertPath, s.KeyPath)
 	}
+
+	// Write .user.ini so PHP picks up the allocated memory_limit. Without
+	// this, PHP falls back to the system default (usually 128M) regardless
+	// of the PHP_MEMORY_LIMIT env var in the OLS extprocessor config.
+	if alloc.PHPMemoryLimitMB > 0 && s.Type != "html" {
+		docRoot := filepath.Join(siteRoot, "htdocs")
+		if err := os.MkdirAll(docRoot, 0o755); err != nil { //nolint:gosec // web root
+			return fmt.Errorf("site: create %s: %w", docRoot, err)
+		}
+		iniPath := filepath.Join(docRoot, ".user.ini")
+		iniContent := fmt.Sprintf("memory_limit = %dM\n", alloc.PHPMemoryLimitMB)
+		if err := os.WriteFile(iniPath, []byte(iniContent), 0o644); err != nil { //nolint:gosec // php ini, not secret
+			return fmt.Errorf("site: write %s: %w", iniPath, err)
+		}
+	}
+
 	return nil
 }
 
