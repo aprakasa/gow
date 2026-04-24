@@ -2,6 +2,7 @@ package site
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -321,5 +322,35 @@ func TestEnableSSL_HSTS_PersistsOnSite(t *testing.T) {
 	got, _ := m.store.Find("ssl.test")
 	if !got.HSTS {
 		t.Error("Site.HSTS should be true after EnableSSL with HSTS: true")
+	}
+}
+
+func TestEnableSSL_RollsBackStateWhenForceSSLAdminFails(t *testing.T) {
+	ctx := context.Background()
+	rr := &selectiveFailRunner{
+		failOn: []string{"FORCE_SSL_ADMIN"},
+		failed: fmt.Errorf("wp-cli failed"),
+	}
+	m, dir := setupManagerWithRunner(t, rr)
+	seedSSLSite(t, m, dir)
+
+	err := m.EnableSSL(ctx, "ssl.test", SSLOptions{Email: "a@b.c"})
+	if err == nil {
+		t.Fatal("expected error when FORCE_SSL_ADMIN fails")
+	}
+	if !strings.Contains(err.Error(), "FORCE_SSL_ADMIN") {
+		t.Errorf("error = %q, want 'FORCE_SSL_ADMIN'", err.Error())
+	}
+
+	// Verify state was rolled back: SSLEnabled should still be false.
+	got, _ := m.store.Find("ssl.test")
+	if got.SSLEnabled {
+		t.Error("SSLEnabled should be false after rollback")
+	}
+	if got.CertPath != "" {
+		t.Errorf("CertPath should be empty after rollback, got %q", got.CertPath)
+	}
+	if got.KeyPath != "" {
+		t.Errorf("KeyPath should be empty after rollback, got %q", got.KeyPath)
 	}
 }

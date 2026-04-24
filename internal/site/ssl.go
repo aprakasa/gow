@@ -94,6 +94,21 @@ func (m *Manager) EnableSSL(ctx context.Context, name string, opts SSLOptions) e
 		}
 	}
 
+	// Save pre-mutation state for rollback.
+	prev, _ := m.store.Find(name)
+
+	committed := false
+	var rollbacks []func()
+	defer func() {
+		if committed {
+			return
+		}
+		for i := len(rollbacks) - 1; i >= 0; i-- {
+			rollbacks[i]()
+		}
+	}()
+
+	// State mutation.
 	if err := m.store.Update(name, func(s *state.Site) {
 		s.SSLEnabled = true
 		s.CertPath = certPath
@@ -102,6 +117,14 @@ func (m *Manager) EnableSSL(ctx context.Context, name string, opts SSLOptions) e
 	}); err != nil {
 		return fmt.Errorf("site: ssl %s: update state: %w", name, err)
 	}
+	rollbacks = append(rollbacks, func() {
+		_ = m.store.Update(name, func(s *state.Site) {
+			s.SSLEnabled = prev.SSLEnabled
+			s.CertPath = prev.CertPath
+			s.KeyPath = prev.KeyPath
+			s.HSTS = prev.HSTS
+		})
+	})
 
 	docRoot := filepath.Join(m.webRoot, name, "htdocs")
 	if err := m.runner.Run(ctx, stack.WPCLIBinPath, "config", "set", "FORCE_SSL_ADMIN", "true",
@@ -114,5 +137,9 @@ func (m *Manager) EnableSSL(ctx context.Context, name string, opts SSLOptions) e
 		return fmt.Errorf("site: ssl %s: reconcile: %w", name, err)
 	}
 
-	return m.store.Save()
+	if err := m.store.Save(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
