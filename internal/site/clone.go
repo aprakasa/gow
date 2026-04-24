@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/aprakasa/gow/internal/dbsql"
+	"github.com/aprakasa/gow/internal/stack"
 )
 
 // Clone creates a new site that is a copy of src at dst. The source must be
@@ -93,19 +94,21 @@ func (m *Manager) Clone(ctx context.Context, src, dst string) error {
 		return fmt.Errorf("site: clone %s → %s: import db: %w", src, dst, err)
 	}
 
-	// Rewrite wp-config.php DB credentials via WP-CLI.
-	if err := m.runner.Run(ctx, "wp", "config", "set", "DB_NAME", dstDB, "--path="+dstDocRoot, "--allow-root"); err != nil {
+	// Rewrite wp-config.php DB credentials. DB_NAME/DB_USER go through wp-cli
+	// (they are not secrets). DB_PASSWORD is written directly to avoid argv
+	// exposure via /proc/<pid>/cmdline while wp-cli runs.
+	if err := m.runner.Run(ctx, stack.WPCLIBinPath, "config", "set", "DB_NAME", dstDB, "--path="+dstDocRoot, "--allow-root"); err != nil {
 		return fmt.Errorf("site: clone %s → %s: set DB_NAME: %w", src, dst, err)
 	}
-	if err := m.runner.Run(ctx, "wp", "config", "set", "DB_USER", dstDB, "--path="+dstDocRoot, "--allow-root"); err != nil {
+	if err := m.runner.Run(ctx, stack.WPCLIBinPath, "config", "set", "DB_USER", dstDB, "--path="+dstDocRoot, "--allow-root"); err != nil {
 		return fmt.Errorf("site: clone %s → %s: set DB_USER: %w", src, dst, err)
 	}
-	if err := m.runner.Run(ctx, "wp", "config", "set", "DB_PASSWORD", dbPass, "--path="+dstDocRoot, "--allow-root"); err != nil {
+	if err := writeWPConfigPassword(dstDocRoot, dbPass); err != nil {
 		return fmt.Errorf("site: clone %s → %s: set DB_PASSWORD: %w", src, dst, err)
 	}
 
 	// Search-replace domain references.
-	if err := m.runner.Run(ctx, "wp", "search-replace", src, dst, "--all-tables", "--path="+dstDocRoot, "--allow-root"); err != nil {
+	if err := m.runner.Run(ctx, stack.WPCLIBinPath, "search-replace", src, dst, "--all-tables", "--path="+dstDocRoot, "--allow-root"); err != nil {
 		return fmt.Errorf("site: clone %s → %s: search-replace: %w", src, dst, err)
 	}
 

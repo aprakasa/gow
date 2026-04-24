@@ -9,9 +9,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/aprakasa/gow/internal/dbsql"
+	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 )
 
@@ -105,21 +107,22 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 			return fmt.Errorf("site: restore %s: import db: %w", name, err)
 		}
 
-		// Rewrite wp-config.php DB credentials via WP-CLI.
-		if err := m.runner.Run(ctx, "wp", "config", "set", "DB_NAME", dbName, "--path="+docRoot, "--allow-root"); err != nil {
+		// Rewrite wp-config.php DB credentials. DB_NAME/DB_USER go through
+		// wp-cli. DB_PASSWORD is written in-process to avoid argv exposure.
+		if err := m.runner.Run(ctx, stack.WPCLIBinPath, "config", "set", "DB_NAME", dbName, "--path="+docRoot, "--allow-root"); err != nil {
 			return fmt.Errorf("site: restore %s: set DB_NAME: %w", name, err)
 		}
-		if err := m.runner.Run(ctx, "wp", "config", "set", "DB_USER", dbName, "--path="+docRoot, "--allow-root"); err != nil {
+		if err := m.runner.Run(ctx, stack.WPCLIBinPath, "config", "set", "DB_USER", dbName, "--path="+docRoot, "--allow-root"); err != nil {
 			return fmt.Errorf("site: restore %s: set DB_USER: %w", name, err)
 		}
-		if err := m.runner.Run(ctx, "wp", "config", "set", "DB_PASSWORD", dbPass, "--path="+docRoot, "--allow-root"); err != nil {
+		if err := writeWPConfigPassword(docRoot, dbPass); err != nil {
 			return fmt.Errorf("site: restore %s: set DB_PASSWORD: %w", name, err)
 		}
 
 		// Search-replace old domain if restoring to a different name.
 		origDomain := origSite.Name
 		if origDomain != "" && origDomain != name {
-			if err := m.runner.Run(ctx, "wp", "search-replace", origDomain, name, "--all-tables", "--path="+docRoot, "--allow-root"); err != nil {
+			if err := m.runner.Run(ctx, stack.WPCLIBinPath, "search-replace", origDomain, name, "--all-tables", "--path="+docRoot, "--allow-root"); err != nil {
 				return fmt.Errorf("site: restore %s: search-replace: %w", name, err)
 			}
 		}
@@ -134,6 +137,31 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 
 	committed = true
 	return nil
+}
+
+// wpConfigPasswordRE matches the DB_PASSWORD define line in wp-config.php.
+// Written permissively across quote style and whitespace so handwritten configs
+// match too.
+var wpConfigPasswordRE = regexp.MustCompile(`(?m)^\s*define\s*\(\s*['"]DB_PASSWORD['"]\s*,\s*['"][^'"]*['"]\s*\)\s*;`)
+
+// writeWPConfigPassword rewrites the DB_PASSWORD define in wp-config.php
+// in-process. The value never reaches an external command's argv, so it does
+// not show up in /proc/<pid>/cmdline, shell history, or audit logs.
+//
+// Passwords produced by dbsql.Password are alphanumeric, so no escaping is
+// required; the quoting still uses single quotes for consistency with wp-cli.
+func writeWPConfigPassword(docRoot, pass string) error {
+	path := filepath.Join(docRoot, "wp-config.php")
+	data, err := os.ReadFile(path) //nolint:gosec // docRoot is derived from a validated site name
+	if err != nil {
+		return fmt.Errorf("read wp-config.php: %w", err)
+	}
+	replacement := "define('DB_PASSWORD', '" + pass + "');"
+	if !wpConfigPasswordRE.MatchString(string(data)) {
+		return fmt.Errorf("wp-config.php: no DB_PASSWORD define found")
+	}
+	out := wpConfigPasswordRE.ReplaceAllString(string(data), replacement)
+	return os.WriteFile(path, []byte(out), 0o600) //nolint:gosec // holds DB password; keep tight
 }
 
 // extractArchive extracts a .tar.gz archive into dst using pure Go (no shell

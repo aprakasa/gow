@@ -65,7 +65,7 @@ func TestRestore_WP_Success(t *testing.T) {
 		if cmd[0] == "bash" && strings.Contains(all, "mariadb") {
 			sawImportDB = true
 		}
-		if cmd[0] == "wp" && strings.Contains(all, "search-replace") {
+		if isWPCmd(cmd) && strings.Contains(all, "search-replace") {
 			sawSearchReplace = true
 		}
 	}
@@ -97,7 +97,7 @@ func TestRestore_SameDomain_NoSearchReplace(t *testing.T) {
 	}
 
 	for _, cmd := range rr.commands {
-		if cmd[0] == "wp" && strings.Contains(strings.Join(cmd, " "), "search-replace") {
+		if isWPCmd(cmd) && strings.Contains(strings.Join(cmd, " "), "search-replace") {
 			t.Error("search-replace should not run when domain unchanged")
 		}
 	}
@@ -144,6 +144,10 @@ func createTestArchive(t *testing.T, dir string, site state.Site) string {
 	if err := os.WriteFile(filepath.Join(staging, "htdocs", "index.php"), []byte("<?php"), 0o644); err != nil { //nolint:gosec // test file
 		t.Fatalf("write index.php: %v", err)
 	}
+	wpConfig := []byte("<?php\ndefine('DB_PASSWORD', 'oldpass');\n")
+	if err := os.WriteFile(filepath.Join(staging, "htdocs", "wp-config.php"), wpConfig, 0o644); err != nil { //nolint:gosec // test file
+		t.Fatalf("write wp-config.php: %v", err)
+	}
 
 	archivePath := filepath.Join(dir, "test-backup.tar.gz")
 	f, err := os.Create(archivePath) //nolint:gosec // test file
@@ -158,6 +162,7 @@ func createTestArchive(t *testing.T, dir string, site state.Site) string {
 	writeTarFile(t, tw, "site.json", siteJSON)
 	writeTarFile(t, tw, "db.sql", []byte("-- fake dump\n"))
 	writeTarFile(t, tw, "htdocs/index.php", []byte("<?php"))
+	writeTarFile(t, tw, "htdocs/wp-config.php", wpConfig)
 
 	tw.Close() //nolint:errcheck,gosec // test cleanup
 	gw.Close() //nolint:errcheck,gosec // test cleanup

@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,13 +17,19 @@ import (
 	"github.com/aprakasa/gow/internal/testmock"
 )
 
-// recordingRunner records all Run calls and always succeeds.
+// recordingRunner records all Run calls and always succeeds. It executes
+// filesystem-affecting commands (cp) for real so flows that depend on files
+// appearing on disk — like clone/restore rewriting wp-config.php — work
+// end-to-end in tests without needing to mock every downstream read.
 type recordingRunner struct {
 	commands [][]string
 }
 
 func (r *recordingRunner) Run(_ context.Context, name string, args ...string) error {
 	r.commands = append(r.commands, append([]string{name}, args...))
+	if name == "cp" {
+		return exec.Command(name, args...).Run() //nolint:gosec // test fixture; args come from test code
+	}
 	return nil
 }
 
@@ -38,6 +45,15 @@ func (r *recordingRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer,
 
 // Verify recordingRunner satisfies stack.Runner at compile time.
 var _ stack.Runner = (*recordingRunner)(nil)
+
+// isWPCmd reports whether a recorded command invoked wp-cli, whether via bare
+// "wp" (legacy) or the pinned stack.WPCLIBinPath.
+func isWPCmd(cmd []string) bool {
+	if len(cmd) == 0 {
+		return false
+	}
+	return cmd[0] == "wp" || cmd[0] == stack.WPCLIBinPath
+}
 
 // setupManagerWithRunner creates a Manager with a custom runner for tests that
 // need to inspect command invocations.

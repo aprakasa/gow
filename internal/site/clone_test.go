@@ -61,7 +61,7 @@ func TestClone_Success(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "www", "src.test", "htdocs"), 0o755); err != nil { //nolint:gosec // test dir
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "www", "src.test", "htdocs", "wp-config.php"), []byte("<?php"), 0o644); err != nil { //nolint:gosec // test file
+	if err := os.WriteFile(filepath.Join(dir, "www", "src.test", "htdocs", "wp-config.php"), []byte("<?php\ndefine('DB_PASSWORD', 'oldpass');\n"), 0o644); err != nil { //nolint:gosec // test file
 		t.Fatalf("write: %v", err)
 	}
 	if err := m.store.Add(state.Site{Name: "src.test", Type: "wp", PHPVersion: "83", Preset: "standard", CacheMode: "lscache"}); err != nil {
@@ -100,10 +100,10 @@ func TestClone_Success(t *testing.T) {
 		if cmd[0] == "bash" && strings.Contains(all, "mariadb") {
 			sawImportDB = true
 		}
-		if cmd[0] == "wp" && strings.Contains(all, "search-replace") {
+		if isWPCmd(cmd) && strings.Contains(all, "search-replace") {
 			sawSearchReplace = true
 		}
-		if cmd[0] == "wp" && strings.Contains(all, "config set DB_NAME") {
+		if isWPCmd(cmd) && strings.Contains(all, "config set DB_NAME") {
 			sawConfigSet = true
 		}
 	}
