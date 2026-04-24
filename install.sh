@@ -9,6 +9,7 @@ GOW_BACKUP_DIR="/var/backups/gow"
 GOW_LOG_DIR="/var/log/lsws"
 GOW_CRON_DIR="/etc/cron.d"
 RELEASE_URL="https://github.com/aprakasa/gow/releases/latest/download/gow"
+CHECKSUMS_URL="https://github.com/aprakasa/gow/releases/latest/download/checksums.txt"
 INSTALL_LOG="/var/log/gow-install.log"
 
 # Colors
@@ -106,24 +107,53 @@ _detect_existing() {
 
 # --- Install ---
 
+_fetch() {
+    # _fetch <url> <dest> — returns 0 on success.
+    local url="$1" dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL -o "$dest" "$url" 2>>"$INSTALL_LOG"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$dest" "$url" 2>>"$INSTALL_LOG"
+    else
+        return 127
+    fi
+}
+
+_verify_checksum() {
+    # _verify_checksum <binary> <checksums_file> — returns 0 if expected sha256
+    # matches the computed one. Accepts "<sha>  gow" or "<sha> *gow" lines.
+    local bin="$1" sums="$2"
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        _warn "'sha256sum' not found, skipping checksum verification"
+        return 0
+    fi
+    local expected actual
+    expected=$(awk '$2 ~ /^\*?gow$/ {print $1; exit}' "$sums")
+    if [ -z "$expected" ]; then
+        _error "checksums.txt has no entry for 'gow'."
+        return 1
+    fi
+    actual=$(sha256sum "$bin" | awk '{print $1}')
+    if [ "$expected" != "$actual" ]; then
+        _error "Checksum mismatch: expected $expected, got $actual."
+        return 1
+    fi
+    return 0
+}
+
 _download_binary() {
     local tmp="/tmp/gow.$$"
+    local sums="/tmp/gow.$$.sha256"
+
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        _error "Neither curl nor wget found. Install one and re-run."
+        exit 1
+    fi
 
     _info "Downloading gow binary..."
-    if command -v curl >/dev/null 2>&1; then
-        if ! curl -fSL -o "$tmp" "$RELEASE_URL" 2>>"$INSTALL_LOG"; then
-            _error "Download failed. Check your internet connection and GitHub releases."
-            rm -f "$tmp"
-            exit 1
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        if ! wget -qO "$tmp" "$RELEASE_URL" 2>>"$INSTALL_LOG"; then
-            _error "Download failed. Check your internet connection and GitHub releases."
-            rm -f "$tmp"
-            exit 1
-        fi
-    else
-        _error "Neither curl nor wget found. Install one and re-run."
+    if ! _fetch "$RELEASE_URL" "$tmp"; then
+        _error "Download failed. Check your internet connection and GitHub releases."
+        rm -f "$tmp"
         exit 1
     fi
 
@@ -132,6 +162,18 @@ _download_binary() {
         rm -f "$tmp"
         exit 1
     fi
+
+    _info "Verifying checksum..."
+    if ! _fetch "$CHECKSUMS_URL" "$sums"; then
+        _error "Failed to fetch checksums.txt — refusing to install an unverified binary."
+        rm -f "$tmp" "$sums"
+        exit 1
+    fi
+    if ! _verify_checksum "$tmp" "$sums"; then
+        rm -f "$tmp" "$sums"
+        exit 1
+    fi
+    rm -f "$sums"
 
     if command -v file >/dev/null 2>&1; then
         if ! file "$tmp" | grep -q "ELF.*executable\|ELF.*shared object"; then
