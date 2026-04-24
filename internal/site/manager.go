@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aprakasa/gow/internal/allocator"
 	"github.com/aprakasa/gow/internal/ols"
@@ -267,8 +268,10 @@ func (m *Manager) SetDefaultPHP(ver string) {
 }
 
 // UserName returns the system user name for a site domain.
+// Dots are replaced with hyphens so the name works with chown's user:group
+// syntax (chown treats '.' as a user/group separator).
 func UserName(domain string) string {
-	return "site-" + domain
+	return "site-" + strings.ReplaceAll(domain, ".", "-")
 }
 
 // needsIsolation returns true for site types that run PHP and need a

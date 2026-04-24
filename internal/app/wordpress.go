@@ -98,6 +98,13 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("wp core download: %w", err)
 	}
 	fmt.Fprintln(w, " OK")
+
+	// wp core download runs as root, so extracted files are owned by root.
+	// Fix ownership so PHP (running as the site's isolated user) can write.
+	unixUser := site.UserName(domain)
+	if err := r.Run(ctx, "chown", "-R", unixUser+":"+unixUser, docRoot); err != nil {
+		return fmt.Errorf("chown docroot: %w", err)
+	}
 	dbName := dbsql.DBName(domain)
 	dbUser := dbName
 	dbPass := dbsql.Password(20)
@@ -232,7 +239,7 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 	if err := r.Run(ctx, "touch", htaccess); err != nil {
 		return fmt.Errorf("create .htaccess: %w", err)
 	}
-	unixUser := site.UserName(domain)
+	unixUser = site.UserName(domain)
 	if err := r.Run(ctx, "chown", unixUser+":"+unixUser, htaccess); err != nil {
 		return fmt.Errorf("chown .htaccess: %w", err)
 	}

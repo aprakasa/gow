@@ -799,8 +799,8 @@ func TestCreate_SetsUnixUser(t *testing.T) {
 		t.Fatalf("Create() = %v", err)
 	}
 	got, _ := m.store.Find("blog.test")
-	if got.UnixUser != "site-blog.test" {
-		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog.test")
+	if got.UnixUser != "site-blog-test" {
+		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog-test")
 	}
 }
 
@@ -830,8 +830,8 @@ func TestUpdate_IsolateCreatesUser(t *testing.T) {
 	}
 
 	got, _ := m.store.Find("blog.test")
-	if got.UnixUser != "site-blog.test" {
-		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog.test")
+	if got.UnixUser != "site-blog-test" {
+		t.Errorf("UnixUser = %q, want %q", got.UnixUser, "site-blog-test")
 	}
 
 	content := httpdContent(t, dir)
