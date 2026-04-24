@@ -74,6 +74,37 @@ func TestOpenExistingEmptyFile_Normalizes(t *testing.T) {
 	}
 }
 
+func TestOpen_LocksStateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatalf("first open: %v", err)
+	}
+	defer func() { _ = s1.Close() }()
+
+	// Second open with a short deadline must fail.
+	if _, err := OpenWithTimeout(path, 100*time.Millisecond); err == nil {
+		t.Fatal("expected second Open to fail while first holds lock")
+	}
+}
+
+func TestOpen_CloseReleasesLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+
+	s1, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s1.Close()
+
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("second open after close: %v", err)
+	}
+	_ = s2.Close()
+}
+
 // --- Add ---
 
 func TestAddSite(t *testing.T) {
@@ -184,8 +215,10 @@ func TestAddWithoutSave_NotPersisted(t *testing.T) {
 
 	s1, _ := Open(path)
 	_ = s1.Add(fixtureSite("blog.test", "standard"))
+	_ = s1.Close()
 
 	s2, _ := Open(path)
+	defer func() { _ = s2.Close() }()
 	if _, ok := s2.Find("blog.test"); ok {
 		t.Error("site added without Save should not be visible in a new store instance")
 	}
@@ -233,9 +266,11 @@ func TestRoundTrip(t *testing.T) {
 	if err := s1.Save(); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
+	_ = s1.Close()
 
 	// Second session: load and verify.
 	s2, _ := Open(path)
+	defer func() { _ = s2.Close() }()
 
 	sites := s2.Sites()
 	if len(sites) != 2 {
@@ -266,8 +301,10 @@ func TestRoundTripPreservesTimestamps(t *testing.T) {
 		CreatedAt:  ts,
 	})
 	_ = s1.Save()
+	_ = s1.Close()
 
 	s2, _ := Open(path)
+	defer func() { _ = s2.Close() }()
 
 	got, _ := s2.Find("blog.test")
 	if !got.CreatedAt.Equal(ts) {
@@ -293,8 +330,10 @@ func TestCustomPresetRoundTrip(t *testing.T) {
 		CreatedAt:    time.Date(2026, 4, 13, 23, 0, 0, 0, time.UTC),
 	})
 	_ = s1.Save()
+	_ = s1.Close()
 
 	s2, _ := Open(path)
+	defer func() { _ = s2.Close() }()
 
 	got, _ := s2.Find("custom.test")
 	if got.CustomPreset == nil {
@@ -423,12 +462,15 @@ func TestSaveAfterRemove(t *testing.T) {
 	_ = s1.Add(fixtureSite("blog.test", "standard"))
 	_ = s1.Add(fixtureSite("shop.test", "woocommerce"))
 	_ = s1.Save()
+	_ = s1.Close()
 
 	s2, _ := Open(path)
 	_ = s2.Remove("blog.test")
 	_ = s2.Save()
+	_ = s2.Close()
 
 	s3, _ := Open(path)
+	defer func() { _ = s3.Close() }()
 
 	if _, ok := s3.Find("blog.test"); ok {
 		t.Error("blog.test should be gone after remove + save")

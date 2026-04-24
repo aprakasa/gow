@@ -48,17 +48,42 @@ type CustomPreset struct {
 
 // --- Store ---
 
+// defaultLockTimeout bounds how long Open will wait for the cross-process
+// state lock before giving up. Generous because `stack install` legitimately
+// takes minutes.
+const defaultLockTimeout = 5 * time.Minute
+
 // Store manages the site registry backed by a JSON file on disk.
 type Store struct {
 	mu    sync.Mutex
 	path  string
 	sites []Site
+	lock  *fileLock
 }
 
 // Open loads the store from path. If the file does not exist it is created
-// with an empty site list.
+// with an empty site list. An exclusive cross-process lock is acquired on a
+// sidecar file; callers must call Close to release it.
 func Open(path string) (*Store, error) {
-	s := &Store{path: path}
+	return OpenWithTimeout(path, defaultLockTimeout)
+}
+
+// OpenWithTimeout is like Open but waits up to timeout for the state file
+// lock to become available.
+func OpenWithTimeout(path string, timeout time.Duration) (*Store, error) {
+	lock, err := acquireFileLock(path+".lock", timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &Store{path: path, lock: lock}
+
+	success := false
+	defer func() {
+		if !success {
+			_ = s.Close()
+		}
+	}()
 
 	data, err := os.ReadFile(path) //nolint:gosec // path is set by the CLI, not user input
 	if err != nil {
@@ -69,6 +94,7 @@ func Open(path string) (*Store, error) {
 			if saveErr := s.Save(); saveErr != nil {
 				return nil, fmt.Errorf("state: create %s: %w", path, saveErr)
 			}
+			success = true
 			return s, nil
 		}
 		return nil, fmt.Errorf("state: read %s: %w", path, err)
@@ -79,6 +105,7 @@ func Open(path string) (*Store, error) {
 		if saveErr := s.Save(); saveErr != nil {
 			return nil, fmt.Errorf("state: write %s: %w", path, saveErr)
 		}
+		success = true
 		return s, nil
 	}
 
@@ -96,7 +123,19 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	s.sites = wrapper.Sites
+	success = true
 	return s, nil
+}
+
+// Close releases the state file lock. Safe to call multiple times.
+func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lock != nil {
+		s.lock.release()
+		s.lock = nil
+	}
+	return nil
 }
 
 // siteIsWP reports whether a site's effective type is "wp". Sites created
