@@ -114,8 +114,12 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	if sf.SiteType == "wp" {
 		if err := d.WPInstall(domain, cfg.WebRoot, cacheMode, sf.Multisite); err != nil {
 			// WP install failed — clean up the partial site so the user can retry.
-			_ = m.Delete(d.Ctx, domain)
-			_ = d.DBCleanup(domain)
+			if delErr := m.Delete(d.Ctx, domain); delErr != nil {
+				fmt.Fprintf(d.Stderr, "  cleanup warning: site delete: %v\n", delErr)
+			}
+			if dbErr := d.DBCleanup(domain); dbErr != nil {
+				fmt.Fprintf(d.Stderr, "  cleanup warning: db: %v\n", dbErr)
+			}
 			return err
 		}
 		// Re-reconcile to write wp-config.php settings (memory limit,

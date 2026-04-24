@@ -800,3 +800,32 @@ func TestRunCreate_ReleasesLockOnFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 }
+
+func TestRunCreate_WPInstallFailure_SurfacesCleanupWarnings(t *testing.T) {
+	e := newTestEnvRealStore(t)
+
+	wpErr := errors.New("wp-install failed")
+	dbErr := errors.New("db cleanup failed")
+
+	var stderr bytes.Buffer
+	e.deps.Stderr = &stderr
+	e.deps.WPInstall = func(string, string, string, string) error {
+		return wpErr
+	}
+	e.deps.DBCleanup = func(string) error {
+		return dbErr
+	}
+
+	err := RunCreate(e.cfg, SiteFlags{SiteType: "wp", Preset: "blog", PHP: "83"}, "cleanup.test", e.deps)
+	if !errors.Is(err, wpErr) {
+		t.Fatalf("RunCreate() error = %v, want %v", err, wpErr)
+	}
+
+	got := stderr.String()
+	if !strings.Contains(got, "cleanup warning") {
+		t.Errorf("stderr = %q, want cleanup warning", got)
+	}
+	if !strings.Contains(got, "db cleanup failed") {
+		t.Errorf("stderr = %q, want db error message", got)
+	}
+}
