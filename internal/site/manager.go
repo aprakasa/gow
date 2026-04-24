@@ -227,7 +227,10 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 			return fmt.Errorf("site: create %s: %w", docRoot, err)
 		}
 		iniPath := filepath.Join(docRoot, ".user.ini")
-		iniContent := fmt.Sprintf("memory_limit = %dM\n", alloc.PHPMemoryLimitMB)
+		iniContent := fmt.Sprintf(
+				"memory_limit = %dM\nmax_execution_time = 3600\nmax_input_vars = 5000\n",
+				alloc.PHPMemoryLimitMB,
+			)
 		if err := os.WriteFile(iniPath, []byte(iniContent), 0o644); err != nil { //nolint:gosec // php ini, not secret
 			return fmt.Errorf("site: write %s: %w", iniPath, err)
 		}
