@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aprakasa/gow/internal/dbsql"
 	"github.com/aprakasa/gow/internal/state"
@@ -136,9 +137,11 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 }
 
 // extractArchive extracts a .tar.gz archive into dst using pure Go (no shell
-// commands), so it works in tests with mocked runners.
+// commands), so it works in tests with mocked runners. Entries are rejected
+// if they would write outside dst, preventing path-traversal attacks in
+// backups from untrusted sources.
 //
-//nolint:gosec // G301/G304/G305: archive extraction from trusted backup files
+//nolint:gosec // G304: path validated via prefix check below
 func extractArchive(archivePath, dst string) error {
 	f, err := os.Open(archivePath) //nolint:gosec // path validated by caller
 	if err != nil {
@@ -152,6 +155,12 @@ func extractArchive(archivePath, dst string) error {
 	}
 	defer gz.Close() //nolint:errcheck // reader
 
+	cleanDst, err := filepath.Abs(filepath.Clean(dst))
+	if err != nil {
+		return err
+	}
+	allowedPrefix := cleanDst + string(os.PathSeparator)
+
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -161,17 +170,23 @@ func extractArchive(archivePath, dst string) error {
 		if err != nil {
 			return err
 		}
-		target := filepath.Join(dst, hdr.Name)
+		target, err := filepath.Abs(filepath.Join(cleanDst, hdr.Name))
+		if err != nil {
+			return err
+		}
+		if target != cleanDst && !strings.HasPrefix(target, allowedPrefix) {
+			return fmt.Errorf("unsafe path in archive: %s", hdr.Name)
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil {
+			if err := os.MkdirAll(target, os.FileMode(hdr.Mode)); err != nil { //nolint:gosec // mode from trusted archive
 				return err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil { //nolint:gosec // parent dir
 				return err
 			}
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY, os.FileMode(hdr.Mode)) //nolint:gosec // extracted file
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode)) //nolint:gosec // extracted file
 			if err != nil {
 				return err
 			}
