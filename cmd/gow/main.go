@@ -64,6 +64,7 @@ func main() {
 	createCmd.Flags().BoolVar(&sCreateFlags.NoCache, "no-cache", false, "Disable LSCache page cache + plugin (wp only)")
 	createCmd.Flags().StringVar(&sCreateFlags.Multisite, "multisite", "", "Enable multisite (subdirectory or subdomain, wp only)")
 	createCmd.Flags().StringVar(&sCreateFlags.SSLEmail, "ssl-email", "", "Auto-enable SSL with Let's Encrypt (requires DNS pointing to this server)")
+	createCmd.Flags().BoolVar(&sCreateFlags.Force, "force", false, "Delete and recreate if site already exists")
 
 	var sUpdateFlags app.SiteFlags
 	updateCmd := &cobra.Command{

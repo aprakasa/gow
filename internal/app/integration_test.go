@@ -829,3 +829,25 @@ func TestRunCreate_WPInstallFailure_SurfacesCleanupWarnings(t *testing.T) {
 		t.Errorf("stderr = %q, want db error message", got)
 	}
 }
+
+func TestRunCreate_DuplicateFailsWithoutForce(t *testing.T) {
+	e := newTestEnvRealStore(t)
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "html"}, "a.test", e.deps); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "html"}, "a.test", e.deps); err == nil {
+		t.Fatal("expected duplicate to fail without --force")
+	}
+}
+
+func TestRunCreate_ForceReplacesExistingSite(t *testing.T) {
+	e := newTestEnvRealStore(t)
+
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "html"}, "a.test", e.deps); err != nil {
+		t.Fatalf("first create: %v", err)
+	}
+	if err := RunCreate(e.cfg, SiteFlags{SiteType: "html", Force: true}, "a.test", e.deps); err != nil {
+		t.Fatalf("--force create: %v", err)
+	}
+}

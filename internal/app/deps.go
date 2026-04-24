@@ -48,6 +48,7 @@ type SiteFlags struct {
 	RestoreFile    string // --file (restore only)
 	BackupSchedule string // --schedule (backup-schedule: daily or weekly)
 	BackupRetain   int    // --retain (backup-schedule: number of backups to keep)
+	Force          bool   // --force (create: delete and recreate if site already exists)
 }
 
 // StackFlags holds per-command flags for stack operations.

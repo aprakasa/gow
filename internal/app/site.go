@@ -73,6 +73,16 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 			return err
 		}
 		defer m.Close() //nolint:errcheck // lock release; Close always returns nil
+
+		if _, exists := m.Store().Find(domain); exists {
+			if !sf.Force {
+				return fmt.Errorf("site %q already exists (use --force to replace)", domain)
+			}
+			if err := m.Delete(d.Ctx, domain); err != nil {
+				return fmt.Errorf("--force: delete existing: %w", err)
+			}
+		}
+
 		if err := m.Create(d.Ctx, domain, sf.SiteType, "", "standard", "", "", nil); err != nil {
 			return err
 		}
@@ -108,6 +118,16 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 		return err
 	}
 	defer m.Close() //nolint:errcheck // lock release; Close always returns nil
+
+	if _, exists := m.Store().Find(domain); exists {
+		if !sf.Force {
+			return fmt.Errorf("site %q already exists (use --force to replace)", domain)
+		}
+		if err := m.Delete(d.Ctx, domain); err != nil {
+			return fmt.Errorf("--force: delete existing: %w", err)
+		}
+	}
+
 	if err := m.Create(d.Ctx, domain, sf.SiteType, phpVer, preset, cacheMode, sf.Multisite, custom); err != nil {
 		return err
 	}
