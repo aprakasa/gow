@@ -111,6 +111,9 @@ func RunCreate(cfg CLIConfig, sf SiteFlags, domain string, d Deps) error {
 	}
 	if sf.SiteType == "wp" {
 		if err := d.WPInstall(domain, cfg.WebRoot, cacheMode, sf.Multisite); err != nil {
+			// WP install failed — clean up the partial site so the user can retry.
+			_ = m.Delete(d.Ctx, domain)
+			_ = d.DBCleanup(domain)
 			return err
 		}
 	} else {
