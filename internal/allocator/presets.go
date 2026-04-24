@@ -17,10 +17,10 @@ type Preset struct {
 	Description      string
 }
 
-// Presets is the catalog of named workload tiers, ordered from lightest to
+// presets is the catalog of named workload tiers, ordered from lightest to
 // heaviest. The ordering is load-bearing: DowngradePreset walks it in reverse
 // when the allocator needs to shed memory pressure.
-var Presets = map[string]Preset{
+var presets = map[string]Preset{
 	"lite": {
 		Name:             "lite",
 		PHPMemoryLimitMB: 128,
@@ -59,7 +59,7 @@ var downgradeChain = []string{"lite", "standard", "business", "woocommerce", "he
 
 // LookupPreset returns the named preset or an error if it does not exist.
 func LookupPreset(name string) (Preset, error) {
-	p, ok := Presets[name]
+	p, ok := presets[name]
 	if !ok {
 		return Preset{}, fmt.Errorf("allocator: unknown preset %q", name)
 	}

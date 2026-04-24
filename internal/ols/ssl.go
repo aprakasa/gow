@@ -1,7 +1,5 @@
 package ols
 
-import "strings"
-
 // EnsureSSLListener adds an SSL listener block to httpd_config.conf if one
 // does not already exist. Idempotent.
 func EnsureSSLListener(httpdConfPath string) error {
@@ -57,28 +55,4 @@ func SetVHostSSL(httpdConfPath, siteName, certPath, keyPath string) error {
 	}
 	c.setVHostSSL(siteName, certPath, keyPath)
 	return c.save()
-}
-
-// extractListenerBlock returns the text of a named listener block (from its
-// header through its closing brace). Kept here as a test helper used by
-// ssl_test.go; production code should use httpdConf.findBlock directly.
-func extractListenerBlock(content, listenerName string) string {
-	header := "listener " + listenerName + " {"
-	idx := strings.Index(content, header)
-	if idx == -1 {
-		return ""
-	}
-	depth := 0
-	for i := idx; i < len(content); i++ {
-		switch content[i] {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return content[idx : i+1]
-			}
-		}
-	}
-	return content[idx:]
 }

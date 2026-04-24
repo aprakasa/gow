@@ -7,14 +7,14 @@ const presetStandard = "standard"
 func TestPresetsCatalogContainsNamedTiers(t *testing.T) {
 	want := []string{"lite", presetStandard, "business", "woocommerce", "heavy"}
 	for _, name := range want {
-		if _, ok := Presets[name]; !ok {
-			t.Errorf("Presets catalog missing %q", name)
+		if _, ok := presets[name]; !ok {
+			t.Errorf("presets catalog missing %q", name)
 		}
 	}
 }
 
 func TestPresetWorkerBudgetNeverExceedsPHPMemoryLimit(t *testing.T) {
-	for name, p := range Presets {
+	for name, p := range presets {
 		if p.WorkerBudgetMB > p.PHPMemoryLimitMB {
 			t.Errorf("%s: WorkerBudgetMB=%d must be <= PHPMemoryLimitMB=%d",
 				name, p.WorkerBudgetMB, p.PHPMemoryLimitMB)
@@ -25,7 +25,7 @@ func TestPresetWorkerBudgetNeverExceedsPHPMemoryLimit(t *testing.T) {
 func TestPresetsAreMonotonicallyHeavier(t *testing.T) {
 	chain := []string{"lite", presetStandard, "business", "woocommerce", "heavy"}
 	for i := 1; i < len(chain); i++ {
-		prev, curr := Presets[chain[i-1]], Presets[chain[i]]
+		prev, curr := presets[chain[i-1]], presets[chain[i]]
 		if curr.PHPMemoryLimitMB <= prev.PHPMemoryLimitMB {
 			t.Errorf("%s PHPMemoryLimitMB=%d not > %s=%d",
 				chain[i], curr.PHPMemoryLimitMB, chain[i-1], prev.PHPMemoryLimitMB)

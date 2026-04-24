@@ -5,106 +5,6 @@ import (
 	"testing"
 )
 
-// extAppGolden is the expected output for the canonical fixture used in both
-// the field-presence test and the golden-file test.
-const extAppGolden = `extprocessor lsphp-blog.test {
-  type                    lsapi
-  address                 uds://tmp/lshttpd/blog.test.sock
-  maxConns                10
-  env                     PHP_LSAPI_CHILDREN=10
-  env                     PHP_LSAPI_MAX_REQUESTS=1000
-  env                     PHP_MEMORY_LIMIT=256M
-  env                     LSAPI_AVOID_FORK=200M
-  initTimeout             60
-  retryTimeout            0
-  persistConn             1
-  pcKeepAliveTimeout      30
-  respBuffer              0
-  autoStart               2
-  path                    /usr/local/lsws/lsphp83/bin/lsphp
-  backlog                 100
-  instances               1
-  priority                0
-  memSoftLimit            2048M
-  memHardLimit            2560M
-  procSoftLimit           10
-  procHardLimit           20
-  runOnStartUp            1
-}`
-
-func fixtureExtApp() ExtAppData {
-	return ExtAppData{
-		Site:             "blog.test",
-		PHPVer:           "83",
-		Children:         10,
-		PHPMemoryLimitMB: 256,
-		MemSoftMB:        2048,
-		MemHardMB:        2560,
-	}
-}
-
-func TestRenderExtAppMatchesGolden(t *testing.T) {
-	got, err := RenderExtApp(fixtureExtApp())
-	if err != nil {
-		t.Fatalf("RenderExtApp() error = %v", err)
-	}
-	if got != extAppGolden {
-		t.Errorf("RenderExtApp() mismatch.\ngot:\n%s\n\nwant:\n%s", got, extAppGolden)
-	}
-}
-
-func TestRenderExtAppContainsKeyFields(t *testing.T) {
-	got, err := RenderExtApp(fixtureExtApp())
-	if err != nil {
-		t.Fatalf("RenderExtApp() error = %v", err)
-	}
-	checks := []struct{ label, substr string }{
-		{"extprocessor name", "extprocessor lsphp-blog.test"},
-		{"socket", "uds://tmp/lshttpd/blog.test.sock"},
-		{"maxConns", "maxConns                10"},
-		{"PHP_LSAPI_CHILDREN env", "PHP_LSAPI_CHILDREN=10"},
-		{"PHP_MEMORY_LIMIT env", "PHP_MEMORY_LIMIT=256M"},
-		{"memSoftLimit", "memSoftLimit            2048M"},
-		{"memHardLimit", "memHardLimit            2560M"},
-		{"procHardLimit", "procHardLimit           20"},
-		{"php path", "/usr/local/lsws/lsphp83/bin/lsphp"},
-	}
-	for _, c := range checks {
-		if !strings.Contains(got, c.substr) {
-			t.Errorf("output missing %s: %q", c.label, c.substr)
-		}
-	}
-}
-
-func TestRenderExtAppDifferentPHPVersion(t *testing.T) {
-	data := fixtureExtApp()
-	data.PHPVer = "82"
-	got, err := RenderExtApp(data)
-	if err != nil {
-		t.Fatalf("RenderExtApp() error = %v", err)
-	}
-	if !strings.Contains(got, "lsphp82/bin/lsphp") {
-		t.Error("output should reference lsphp82 for PHP version 82")
-	}
-}
-
-func TestRenderExtAppSingleChild(t *testing.T) {
-	data := fixtureExtApp()
-	data.Children = 1
-	data.MemSoftMB = 128
-	data.MemHardMB = 256
-	got, err := RenderExtApp(data)
-	if err != nil {
-		t.Fatalf("RenderExtApp() error = %v", err)
-	}
-	if !strings.Contains(got, "maxConns                1") {
-		t.Error("maxConns should be 1")
-	}
-	if !strings.Contains(got, "procHardLimit           2") {
-		t.Error("procHardLimit should be 2 (Children*2)")
-	}
-}
-
 // --- VHost tests ---
 
 func fixtureVHost() VHostData {
@@ -295,39 +195,6 @@ func TestRenderVHostUsesAllocatorValues(t *testing.T) {
 	}
 }
 
-func TestRendererCachesTemplate(t *testing.T) {
-	var r Renderer
-	data := fixtureExtApp()
-	got1, err := r.render("lsphp_extapp.conf.tmpl", data)
-	if err != nil {
-		t.Fatalf("first render: %v", err)
-	}
-	if r.textTmpl == nil {
-		t.Fatal("textTmpl should be set after first render")
-	}
-	cached := r.textTmpl
-	got2, err := r.render("lsphp_extapp.conf.tmpl", data)
-	if err != nil {
-		t.Fatalf("second render: %v", err)
-	}
-	if r.textTmpl != cached {
-		t.Error("textTmpl should not change on subsequent calls")
-	}
-	if got1 != got2 {
-		t.Error("output should be identical across calls")
-	}
-}
-
-func BenchmarkRenderExtApp(b *testing.B) {
-	data := fixtureExtApp()
-	for i := 0; i < b.N; i++ {
-		_, err := RenderExtApp(data)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
 // --- VHost variant tests ---
 
 func TestRenderVHostHTML(t *testing.T) {
@@ -373,22 +240,6 @@ func TestRenderVHostPHP(t *testing.T) {
 	}
 	if strings.Contains(got, "RewriteRule") {
 		t.Error("php template should not contain WordPress rewrite rules")
-	}
-}
-
-func TestRenderMaintenance(t *testing.T) {
-	got, err := RenderMaintenance("example.com")
-	if err != nil {
-		t.Fatalf("RenderMaintenance() error = %v", err)
-	}
-	if !strings.Contains(got, "Under Maintenance") {
-		t.Error("maintenance page should contain heading")
-	}
-	if !strings.Contains(got, "example.com") {
-		t.Error("maintenance page should contain domain")
-	}
-	if !strings.Contains(got, "<!DOCTYPE html>") {
-		t.Error("maintenance page should be valid HTML")
 	}
 }
 

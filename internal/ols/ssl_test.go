@@ -6,6 +6,29 @@ import (
 	"testing"
 )
 
+// extractListenerBlock returns the text of a named listener block (from its
+// header through its closing brace).
+func extractListenerBlock(content, listenerName string) string {
+	header := "listener " + listenerName + " {"
+	idx := strings.Index(content, header)
+	if idx == -1 {
+		return ""
+	}
+	depth := 0
+	for i := idx; i < len(content); i++ {
+		switch content[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return content[idx : i+1]
+			}
+		}
+	}
+	return content[idx:]
+}
+
 func TestEnsureSSLListener_AddsListener(t *testing.T) {
 	p := writeHttpdConf(t, baseHttpdConf())
 
