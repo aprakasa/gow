@@ -4,15 +4,13 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/aprakasa/gow/internal/dbsql"
 	"github.com/aprakasa/gow/internal/state"
 )
 
@@ -83,11 +81,17 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 			return fmt.Errorf("site: restore %s: missing db.sql in archive: %w", name, err)
 		}
 
-		dbName := dbNameFromDomain(name)
-		dbPass := generatePassword(20)
-		qDB := quoteIdent(dbName)
-		qUser := quoteIdent(dbName)
-		qPass := sqlEscape(dbPass)
+		dbName := dbsql.DBName(name)
+		dbPass := dbsql.Password(20)
+		qDB, err := dbsql.QuoteIdent(dbName)
+		if err != nil {
+			return fmt.Errorf("site: restore %s: %w", name, err)
+		}
+		qUser, err := dbsql.QuoteIdent(dbName)
+		if err != nil {
+			return fmt.Errorf("site: restore %s: %w", name, err)
+		}
+		qPass := dbsql.Escape(dbPass)
 
 		sql := fmt.Sprintf(
 			"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS %s@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO %s@'localhost'; FLUSH PRIVILEGES;",
@@ -129,40 +133,6 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 
 	committed = true
 	return nil
-}
-
-// quoteIdent is a minimal backtick wrapper for DB identifiers used by
-// restore/clone. It only allows safe characters.
-func quoteIdent(name string) string {
-	safe := strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
-			return r
-		}
-		return '_'
-	}, name)
-	return "`" + safe + "`"
-}
-
-// sqlEscape escapes a string for MariaDB single-quoted literals.
-func sqlEscape(s string) string {
-	r := strings.NewReplacer(
-		`\`, `\\`,
-		`'`, `\'`,
-		"\x00", `\0`,
-		"\n", `\n`,
-	)
-	return r.Replace(s)
-}
-
-// generatePassword returns a cryptographically random alphanumeric password.
-func generatePassword(length int) string {
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	buf := make([]byte, length)
-	for i := range buf {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-		buf[i] = chars[n.Int64()]
-	}
-	return string(buf)
 }
 
 // extractArchive extracts a .tar.gz archive into dst using pure Go (no shell

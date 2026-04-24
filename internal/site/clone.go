@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/aprakasa/gow/internal/dbsql"
 )
 
 // Clone creates a new site that is a copy of src at dst. The source must be
@@ -49,7 +51,7 @@ func (m *Manager) Clone(ctx context.Context, src, dst string) error {
 	}
 
 	// Dump source database.
-	srcDB := dbNameFromDomain(src)
+	srcDB := dbsql.DBName(src)
 	dumpOut, err := m.runner.Output(ctx, "mariadb-dump", srcDB)
 	if err != nil {
 		return fmt.Errorf("site: clone %s → %s: dump db: %w", src, dst, err)
@@ -66,11 +68,17 @@ func (m *Manager) Clone(ctx context.Context, src, dst string) error {
 	tmpDump.Close() //nolint:errcheck,gosec // closing after write
 
 	// Create destination database.
-	dstDB := dbNameFromDomain(dst)
-	dbPass := generatePassword(20)
-	qDB := quoteIdent(dstDB)
-	qUser := quoteIdent(dstDB)
-	qPass := sqlEscape(dbPass)
+	dstDB := dbsql.DBName(dst)
+	dbPass := dbsql.Password(20)
+	qDB, err := dbsql.QuoteIdent(dstDB)
+	if err != nil {
+		return fmt.Errorf("site: clone %s → %s: %w", src, dst, err)
+	}
+	qUser, err := dbsql.QuoteIdent(dstDB)
+	if err != nil {
+		return fmt.Errorf("site: clone %s → %s: %w", src, dst, err)
+	}
+	qPass := dbsql.Escape(dbPass)
 
 	sql := fmt.Sprintf(
 		"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS %s@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO %s@'localhost'; FLUSH PRIVILEGES;",

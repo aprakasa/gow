@@ -36,33 +36,3 @@ func ValidateDomain(s string) error {
 	}
 	return nil
 }
-
-// dbIdentifier matches names safe to interpolate between MariaDB backticks.
-// Backticks themselves are forbidden, as are quotes, semicolons, and
-// whitespace. Underscores and digits are allowed.
-var dbIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
-
-// quoteDBIdentifier wraps an identifier in backticks after verifying it
-// matches dbIdentifier. Callers that build SQL via fmt.Sprintf should use
-// this instead of hand-quoting so a future unvalidated caller cannot slip
-// an injection through.
-func quoteDBIdentifier(name string) (string, error) {
-	if !dbIdentifier.MatchString(name) {
-		return "", fmt.Errorf("unsafe db identifier %q", name)
-	}
-	return "`" + name + "`", nil
-}
-
-// sqlEscapeString escapes a MariaDB string literal for use between single
-// quotes. Callers still supply the surrounding quotes. It escapes the four
-// characters MariaDB recognizes inside a single-quoted string: backslash,
-// single quote, NUL, and newline.
-func sqlEscapeString(s string) string {
-	r := strings.NewReplacer(
-		`\`, `\\`,
-		`'`, `\'`,
-		"\x00", `\0`,
-		"\n", `\n`,
-	)
-	return r.Replace(s)
-}

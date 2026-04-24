@@ -9,17 +9,14 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/aprakasa/gow/internal/dbsql"
 )
 
 const defaultBackupDir = "/var/backups/gow"
 
 // BackupDir is the output directory for backup archives. Tests override this.
 var BackupDir = defaultBackupDir
-
-// dbNameFromDomain returns the MariaDB database name for a domain.
-func dbNameFromDomain(domain string) string {
-	return "wp_" + strings.ReplaceAll(domain, ".", "_")
-}
 
 // Backup creates a tar.gz archive of the site's state, document root,
 // database dump, and vhost configuration. It returns the archive path.
@@ -48,7 +45,7 @@ func (m *Manager) Backup(ctx context.Context, name string) (string, error) {
 	// Dump MariaDB database for WP sites.
 	st := siteType(site)
 	if st == "wp" {
-		dbName := dbNameFromDomain(name)
+		dbName := dbsql.DBName(name)
 		dumpPath := filepath.Join(tmp, "db.sql")
 		if out, err := m.runner.Output(ctx, "mariadb-dump", dbName); err != nil {
 			return "", fmt.Errorf("site: backup %s: db dump: %w", name, err)

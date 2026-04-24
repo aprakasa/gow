@@ -2,15 +2,14 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/aprakasa/gow/internal/dbsql"
 	"github.com/aprakasa/gow/internal/stack"
 )
 
@@ -46,12 +45,12 @@ func dropSiteDB(ctx context.Context, domain string) error {
 	if err := removeCronFile(domain); err != nil {
 		return err
 	}
-	dbName := dbNameFromDomain(domain)
-	qDB, err := quoteDBIdentifier(dbName)
+	dbName := dbsql.DBName(domain)
+	qDB, err := dbsql.QuoteIdent(dbName)
 	if err != nil {
 		return err
 	}
-	qUser, err := quoteDBIdentifier(dbName)
+	qUser, err := dbsql.QuoteIdent(dbName)
 	if err != nil {
 		return err
 	}
@@ -61,21 +60,6 @@ func dropSiteDB(ctx context.Context, domain string) error {
 		qDB, qUser,
 	)
 	return r.Run(ctx, "mariadb", "-e", sql)
-}
-
-const passwordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-func generatePassword(length int) string {
-	chars := make([]byte, length)
-	for i := range chars {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(passwordChars))))
-		chars[i] = passwordChars[n.Int64()]
-	}
-	return string(chars)
-}
-
-func dbNameFromDomain(domain string) string {
-	return "wp_" + strings.ReplaceAll(domain, ".", "_")
 }
 
 func promptDefault(w io.Writer, label, def string) string {
@@ -101,7 +85,7 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 	adminEmail := promptDefault(w, "Admin email", "admin@"+domain)
 	adminPass := promptDefault(w, "Admin password", "auto-generated")
 	if adminPass == "auto-generated" {
-		adminPass = generatePassword(16)
+		adminPass = dbsql.Password(16)
 	}
 
 	// Download WordPress.
@@ -110,18 +94,18 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		return fmt.Errorf("wp core download: %w", err)
 	}
 	fmt.Fprintln(w, " OK")
-	dbName := dbNameFromDomain(domain)
+	dbName := dbsql.DBName(domain)
 	dbUser := dbName
-	dbPass := generatePassword(20)
-	qDB, err := quoteDBIdentifier(dbName)
+	dbPass := dbsql.Password(20)
+	qDB, err := dbsql.QuoteIdent(dbName)
 	if err != nil {
 		return err
 	}
-	qUser, err := quoteDBIdentifier(dbUser)
+	qUser, err := dbsql.QuoteIdent(dbUser)
 	if err != nil {
 		return err
 	}
-	qPass := sqlEscapeString(dbPass)
+	qPass := dbsql.Escape(dbPass)
 
 	fmt.Fprint(w, "  Creating database...")
 	sql := fmt.Sprintf(

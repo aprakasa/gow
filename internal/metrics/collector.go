@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aprakasa/gow/internal/dbsql"
 	"github.com/aprakasa/gow/internal/stack"
 	"github.com/aprakasa/gow/internal/state"
 )
@@ -123,7 +124,7 @@ func (c *Collector) collectMariaDB(_ context.Context, sites []state.Site, sm *Se
 		if s.Type == "html" {
 			continue
 		}
-		db := dbPattern(s.Name)
+		db := dbsql.DBName(s.Name)
 		out, err := c.runner.Output(context.Background(), "mariadb", "-e",
 			fmt.Sprintf("SELECT ROUND(SUM(data_length+index_length)/1024/1024, 1) FROM information_schema.TABLES WHERE table_schema='%s'", db))
 		if err == nil {
@@ -294,10 +295,4 @@ func parseHumanBytes(s string) float64 {
 		return num / 1024 / 1024
 	}
 	return 0
-}
-
-// dbPattern converts a domain like "blog.test" to the database name pattern
-// "wp_blog_test" matching the dbNameFromDomain convention.
-func dbPattern(domain string) string {
-	return "wp_" + strings.ReplaceAll(domain, ".", "_")
 }
