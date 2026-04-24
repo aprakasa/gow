@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/aprakasa/gow/internal/allocator"
@@ -232,6 +233,17 @@ func (m *Manager) renderAndRegisterSite(_ context.Context, s state.Site, alloc a
 		}
 	}
 
+	// Set WP_MEMORY_LIMIT in wp-config.php so WordPress doesn't cap itself
+	// at its default 40M, overriding the PHP memory_limit at runtime.
+	if alloc.PHPMemoryLimitMB > 0 && s.Type == "wp" {
+		docRoot := filepath.Join(siteRoot, "htdocs")
+		if err := writeWPConfigMemoryLimit(docRoot, alloc.PHPMemoryLimitMB); err != nil {
+			// Non-fatal: wp-config.php may not exist for brand-new sites
+			// that haven't run WP install yet.
+			fmt.Fprintf(os.Stderr, "warning: wp-config memory limit for %s: %v\n", s.Name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -294,6 +306,31 @@ func UserName(domain string) string {
 // dedicated system user.
 func needsIsolation(siteType string) bool {
 	return siteType != "html"
+}
+
+// wpMemoryLimitRE matches a WP_MEMORY_LIMIT define line in wp-config.php.
+var wpMemoryLimitRE = regexp.MustCompile(`(?m)^\s*define\s*\(\s*['"]WP_MEMORY_LIMIT['"]\s*,\s*['"][^'"]*['"]\s*\)\s*;`)
+
+// writeWPConfigMemoryLimit sets or updates WP_MEMORY_LIMIT in wp-config.php.
+// If the constant already exists it is replaced; otherwise it is inserted
+// just before the "/* That's all, stop editing! */" marker.
+func writeWPConfigMemoryLimit(docRoot string, limitMB uint64) error {
+	path := filepath.Join(docRoot, "wp-config.php")
+	data, err := os.ReadFile(path) //nolint:gosec // derived from validated site name
+	if err != nil {
+		return fmt.Errorf("read wp-config.php: %w", err)
+	}
+	val := fmt.Sprintf("%dM", limitMB)
+	replacement := "define('WP_MEMORY_LIMIT', '" + val + "');"
+	content := string(data)
+
+	if wpMemoryLimitRE.MatchString(content) {
+		content = wpMemoryLimitRE.ReplaceAllString(content, replacement)
+	} else {
+		marker := "/* That's all, stop editing!"
+		content = strings.Replace(content, marker, replacement+"\n\n"+marker, 1)
+	}
+	return os.WriteFile(path, []byte(content), 0o644) //nolint:gosec // wp-config, perms set by installer
 }
 
 // userExists checks whether a system user exists by running `id <name>`.
