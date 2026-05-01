@@ -24,6 +24,7 @@ import (
 // end-to-end in tests without needing to mock every downstream read.
 type recordingRunner struct {
 	commands [][]string
+	stdins   []string
 }
 
 func (r *recordingRunner) Run(_ context.Context, name string, args ...string) error {
@@ -39,8 +40,12 @@ func (r *recordingRunner) Output(_ context.Context, name string, args ...string)
 	return "", nil
 }
 
-func (r *recordingRunner) Stream(_ context.Context, _ io.Reader, _, _ io.Writer, name string, args ...string) error {
+func (r *recordingRunner) Stream(_ context.Context, stdin io.Reader, _, _ io.Writer, name string, args ...string) error {
 	r.commands = append(r.commands, append([]string{name}, args...))
+	if stdin != nil {
+		b, _ := io.ReadAll(stdin) //nolint:errcheck // test mock
+		r.stdins = append(r.stdins, string(b))
+	}
 	return nil
 }
 

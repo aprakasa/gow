@@ -54,19 +54,21 @@ func TestRestore_WP_Success(t *testing.T) {
 		t.Errorf("PHPVersion = %q, want 83", s.PHPVersion)
 	}
 
-	// Verify command sequence: mariadb create, mariadb import,
+	// Verify command sequence: mariadb create (via stdin), mariadb import,
 	// wp config set x3, wp search-replace.
 	var sawCreateDB, sawImportDB, sawSearchReplace bool
 	for _, cmd := range rr.commands {
 		all := strings.Join(cmd, " ")
-		if strings.Contains(all, "CREATE DATABASE") {
-			sawCreateDB = true
-		}
 		if cmd[0] == "bash" && strings.Contains(all, "mariadb") {
 			sawImportDB = true
 		}
 		if isWPCmd(cmd) && strings.Contains(all, "search-replace") {
 			sawSearchReplace = true
+		}
+	}
+	for _, s := range rr.stdins {
+		if strings.Contains(s, "CREATE DATABASE") {
+			sawCreateDB = true
 		}
 	}
 	if !sawCreateDB {

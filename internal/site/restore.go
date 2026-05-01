@@ -100,7 +100,7 @@ func (m *Manager) Restore(ctx context.Context, name, archivePath string) error {
 			"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS %s@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO %s@'localhost'; FLUSH PRIVILEGES;",
 			qDB, qUser, qPass, qDB, qUser,
 		)
-		if err := m.runner.Run(ctx, "mariadb", "-e", sql); err != nil {
+		if err := m.runner.Stream(ctx, strings.NewReader(sql), io.Discard, io.Discard, "mariadb"); err != nil {
 			return fmt.Errorf("site: restore %s: create db: %w", name, err)
 		}
 		if err := m.runner.Run(ctx, "bash", "-c", fmt.Sprintf("mariadb -D %s < %s", dbName, dbDump)); err != nil {

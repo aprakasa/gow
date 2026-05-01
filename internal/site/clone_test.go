@@ -94,9 +94,6 @@ func TestClone_Success(t *testing.T) {
 		if strings.Contains(all, "mariadb-dump") {
 			sawDump = true
 		}
-		if strings.Contains(all, "CREATE DATABASE") {
-			sawCreateDB = true
-		}
 		if cmd[0] == "bash" && strings.Contains(all, "mariadb") {
 			sawImportDB = true
 		}
@@ -105,6 +102,11 @@ func TestClone_Success(t *testing.T) {
 		}
 		if isWPCmd(cmd) && strings.Contains(all, "config set DB_NAME") {
 			sawConfigSet = true
+		}
+	}
+	for _, s := range rr.stdins {
+		if strings.Contains(s, "CREATE DATABASE") {
+			sawCreateDB = true
 		}
 	}
 	if !sawDump {

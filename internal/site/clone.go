@@ -3,8 +3,10 @@ package site
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aprakasa/gow/internal/dbsql"
 	"github.com/aprakasa/gow/internal/stack"
@@ -85,7 +87,7 @@ func (m *Manager) Clone(ctx context.Context, src, dst string) error {
 		"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS %s@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO %s@'localhost'; FLUSH PRIVILEGES;",
 		qDB, qUser, qPass, qDB, qUser,
 	)
-	if err := m.runner.Run(ctx, "mariadb", "-e", sql); err != nil {
+	if err := m.runner.Stream(ctx, strings.NewReader(sql), io.Discard, io.Discard, "mariadb"); err != nil {
 		return fmt.Errorf("site: clone %s → %s: create db: %w", src, dst, err)
 	}
 
