@@ -7,12 +7,26 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/aprakasa/gow/internal/dbsql"
 	"github.com/aprakasa/gow/internal/site"
 	"github.com/aprakasa/gow/internal/stack"
 )
+
+var wpConfigPasswordRE = regexp.MustCompile(`(?m)^\s*define\s*\(\s*['"]DB_PASSWORD['"]\s*,\s*['"][^'"]*['"]\s*\)\s*;`)
+
+func writeWPConfigPasswordDirect(docRoot, pass string) error {
+	path := filepath.Join(docRoot, "wp-config.php")
+	data, err := os.ReadFile(path) //nolint:gosec // derived from validated domain
+	if err != nil {
+		return fmt.Errorf("read wp-config.php: %w", err)
+	}
+	replacement := "define('DB_PASSWORD', '" + pass + "');"
+	out := wpConfigPasswordRE.ReplaceAllString(string(data), replacement)
+	return os.WriteFile(path, []byte(out), 0o600) //nolint:gosec // holds DB password
+}
 
 // cronDir is the system cron drop-in directory. Overridden in tests.
 var cronDir = "/etc/cron.d"
@@ -123,17 +137,20 @@ func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMo
 		"CREATE DATABASE IF NOT EXISTS %s; CREATE USER IF NOT EXISTS %s@'localhost' IDENTIFIED BY '%s'; GRANT ALL PRIVILEGES ON %s.* TO %s@'localhost'; FLUSH PRIVILEGES;",
 		qDB, qUser, qPass, qDB, qUser,
 	)
-	if err := r.Run(ctx, "mariadb", "-e", sql); err != nil {
+	if err := r.Stream(ctx, strings.NewReader(sql), io.Discard, io.Discard, "mariadb"); err != nil {
 		return fmt.Errorf("create database: %w", err)
 	}
 	fmt.Fprintln(w, " OK")
 	dbPrefix := "wp_" + strings.ToLower(dbsql.Password(6)) + "_"
 	if err := r.Run(ctx, stack.WPCLIBinPath, "config", "create",
-		"--dbname="+dbName, "--dbuser="+dbUser, "--dbpass="+dbPass,
+		"--dbname="+dbName, "--dbuser="+dbUser, "--dbpass=placeholder",
 		"--dbprefix="+dbPrefix,
 		"--allow-root", "--path="+docRoot,
 	); err != nil {
 		return fmt.Errorf("wp config create: %w", err)
+	}
+	if err := writeWPConfigPasswordDirect(docRoot, dbPass); err != nil {
+		return fmt.Errorf("set db password: %w", err)
 	}
 
 	// Use direct filesystem access — no FTP prompt for plugin/theme installs.
