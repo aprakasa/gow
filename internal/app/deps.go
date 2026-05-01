@@ -103,7 +103,7 @@ func DefaultDeps() Deps {
 	}
 	d.DBCleanup = func(domain string) error { return dropSiteDB(d.Ctx, domain) }
 	d.WPInstall = func(domain, webRoot, cacheMode, multisite string) error {
-		return installWordPress(d.Stdout, d.Ctx, domain, webRoot, cacheMode, multisite)
+		return installWordPress(d.Stdout, d.Ctx, d.NewRunner(), domain, webRoot, cacheMode, multisite)
 	}
 	return d
 }

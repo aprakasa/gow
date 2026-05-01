@@ -90,9 +90,8 @@ func promptDefault(w io.Writer, label, def string) string {
 	return input
 }
 
-func installWordPress(w io.Writer, ctx context.Context, domain, webRoot, cacheMode, multisite string) error {
+func installWordPress(w io.Writer, ctx context.Context, r stack.Runner, domain, webRoot, cacheMode, multisite string) error {
 	docRoot := filepath.Join(webRoot, domain, "htdocs")
-	r := stack.NewShellRunner()
 
 	// Prompt for WP admin credentials.
 	fmt.Fprintln(w, "\n  WordPress setup:")
