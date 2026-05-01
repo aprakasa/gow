@@ -349,7 +349,7 @@ func writeWPConfigMemoryLimit(docRoot string, limitMB uint64) error {
 		marker := "/* That's all, stop editing!"
 		content = strings.Replace(content, marker, replacement+"\n\n"+marker, 1)
 	}
-	return os.WriteFile(path, []byte(content), 0o644) //nolint:gosec // wp-config, perms set by installer
+	return os.WriteFile(path, []byte(content), 0o600) //nolint:gosec // holds DB_PASSWORD; keep tight
 }
 
 // writeWPConfigMaxExecutionTime adds ini_set('max_execution_time', 3600) to
@@ -370,7 +370,7 @@ func writeWPConfigMaxExecutionTime(docRoot string) error {
 		marker := "/* That's all, stop editing!"
 		content = strings.Replace(content, marker, replacement+"\n\n"+marker, 1)
 	}
-	return os.WriteFile(path, []byte(content), 0o644) //nolint:gosec // wp-config, perms set by installer
+	return os.WriteFile(path, []byte(content), 0o600) //nolint:gosec // holds DB_PASSWORD; keep tight
 }
 
 // writePHPDropIn creates a global drop-in ini file for the given PHP version
