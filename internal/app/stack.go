@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"text/tabwriter"
 
@@ -193,10 +194,15 @@ func componentDependents(componentName string, sites []state.Site) []string {
 	return dependents
 }
 
+var migrateVerRe = regexp.MustCompile(`^\d+\.\d+$`)
+
 // RunStackMigrate migrates a stack component (e.g. MariaDB) to a new version.
 func RunStackMigrate(sf StackFlags, d Deps) error {
 	if sf.Target == "" {
 		return fmt.Errorf("required flag: --target (e.g. --target 11.8)")
+	}
+	if !migrateVerRe.MatchString(sf.Target) {
+		return fmt.Errorf("invalid --target %q: must be MAJOR.MINOR (e.g. 11.8)", sf.Target)
 	}
 	names, _ := resolveStackFlags(sf)
 	if len(names) == 0 {
