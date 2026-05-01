@@ -104,7 +104,7 @@ func MariaDB() Component {
 		},
 		MigrateFn: func(ctx context.Context, r Runner, targetVer string) error {
 			if err := r.Run(ctx, "sh", "-c",
-				"mariadb-dump --all-databases --routines --triggers --events > /tmp/gow-migration.sql"); err != nil {
+				"mariadb-dump --all-databases --routines --triggers --events > /tmp/gow-migration.sql && chmod 600 /tmp/gow-migration.sql"); err != nil {
 				return fmt.Errorf("dump databases: %w", err)
 			}
 			if err := r.Run(ctx, "systemctl", "stop", "mariadb"); err != nil {

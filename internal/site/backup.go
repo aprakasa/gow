@@ -49,7 +49,7 @@ func (m *Manager) Backup(ctx context.Context, name string) (string, error) {
 		dumpPath := filepath.Join(tmp, "db.sql")
 		if out, err := m.runner.Output(ctx, "mariadb-dump", dbName); err != nil {
 			return "", fmt.Errorf("site: backup %s: db dump: %w", name, err)
-		} else if err := os.WriteFile(dumpPath, []byte(out), 0o644); err != nil { //nolint:gosec // db dump
+		} else if err := os.WriteFile(dumpPath, []byte(out), 0o600); err != nil { //nolint:gosec // db dump holds site data
 			return "", fmt.Errorf("site: backup %s: write db.sql: %w", name, err)
 		}
 	}
@@ -74,7 +74,7 @@ func (m *Manager) Backup(ctx context.Context, name string) (string, error) {
 	}
 
 	// Create archive.
-	if err := os.MkdirAll(BackupDir, 0o755); err != nil { //nolint:gosec // backup dir
+	if err := os.MkdirAll(BackupDir, 0o700); err != nil { //nolint:gosec // backup dir holds DB dumps
 		return "", fmt.Errorf("site: backup %s: mkdir %s: %w", name, BackupDir, err)
 	}
 	ts := time.Now().UTC().Format("20060102-150405")
