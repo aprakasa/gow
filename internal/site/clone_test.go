@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -123,5 +124,76 @@ func TestClone_Success(t *testing.T) {
 	}
 	if !sawConfigSet {
 		t.Error("expected wp config set DB_NAME")
+	}
+}
+
+// dbPassRE pulls the DB_PASSWORD literal back out of wp-config.php so the
+// no-argv-leak test can search for it.
+var dbPassRE = regexp.MustCompile(`define\(\s*'DB_PASSWORD'\s*,\s*'([^']+)'\s*\)`)
+
+// TestClone_DBPasswordNeverInArgv is the regression test for commit 7cfe510
+// ("pipe SQL with credentials via stdin"). The generated DB password must:
+//   - never appear in any recorded argv (would leak via /proc/<pid>/cmdline,
+//     audit logs, ps output)
+//   - appear inside a Stream stdin payload alongside `IDENTIFIED BY`
+//
+// If this fails, someone reverted the hardening — likely by switching the
+// CREATE USER SQL back to `mariadb -e <sql>` or to `wp config set DB_PASSWORD`.
+func TestClone_DBPasswordNeverInArgv(t *testing.T) {
+	ctx := context.Background()
+	rr := &recordingRunner{}
+	m, dir := setupManagerWithRunner(t, rr)
+
+	srcDocRoot := filepath.Join(dir, "www", "src.test", "htdocs")
+	if err := os.MkdirAll(srcDocRoot, 0o755); err != nil { //nolint:gosec // test dir
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDocRoot, "wp-config.php"), []byte("<?php\ndefine('DB_PASSWORD', 'oldpass');\n"), 0o644); err != nil { //nolint:gosec // test file
+		t.Fatalf("write wp-config: %v", err)
+	}
+	if err := m.store.Add(state.Site{Name: "src.test", Type: "wp", PHPVersion: "83", Preset: "standard", CacheMode: "lscache"}); err != nil {
+		t.Fatalf("store.Add: %v", err)
+	}
+
+	if err := m.Clone(ctx, "src.test", "dst.test"); err != nil {
+		t.Fatalf("Clone() = %v", err)
+	}
+
+	// Read the password the clone actually generated and persisted.
+	dstWPConfig := filepath.Join(dir, "www", "dst.test", "htdocs", "wp-config.php")
+	cfg, err := os.ReadFile(dstWPConfig) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("read dst wp-config: %v", err)
+	}
+	match := dbPassRE.FindSubmatch(cfg)
+	if match == nil {
+		t.Fatalf("DB_PASSWORD not found in dst wp-config.php; content:\n%s", cfg)
+	}
+	dbPass := string(match[1])
+	if dbPass == "" || dbPass == "oldpass" || dbPass == "placeholder" {
+		t.Fatalf("expected freshly generated DB password in wp-config.php, got %q", dbPass)
+	}
+
+	// Negative: must not leak into any subprocess argv.
+	for _, cmd := range rr.commands {
+		for i, a := range cmd {
+			if strings.Contains(a, dbPass) {
+				t.Fatalf("DB password leaked in argv at index %d:\n  cmd: %v\n  password must be delivered via stdin only", i, cmd)
+			}
+		}
+	}
+
+	// Positive: must appear inside a Stream stdin payload, in a CREATE USER
+	// statement. Confirms the credential really did travel via stdin and the
+	// negative assertion above isn't passing because the fix is silently broken.
+	var found bool
+	for _, s := range rr.stdins {
+		if strings.Contains(s, dbPass) && strings.Contains(s, "IDENTIFIED BY") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("DB password not found in any Stream stdin; expected CREATE USER ... IDENTIFIED BY '<pass>' delivered via stdin")
 	}
 }

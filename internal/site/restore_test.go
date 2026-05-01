@@ -171,6 +171,60 @@ func createTestArchive(t *testing.T, dir string, site state.Site) string {
 	return archivePath
 }
 
+// TestRestore_DBPasswordNeverInArgv mirrors TestClone_DBPasswordNeverInArgv:
+// commit 7cfe510 routed CREATE USER ... IDENTIFIED BY through stdin in restore
+// too. If this fails, the hardening was reverted in the restore path.
+func TestRestore_DBPasswordNeverInArgv(t *testing.T) {
+	ctx := context.Background()
+	rr := &recordingRunner{}
+	m, dir := setupManagerWithRunner(t, rr)
+
+	archivePath := createTestArchive(t, dir, state.Site{
+		Name:       "old.test",
+		Type:       "wp",
+		PHPVersion: "83",
+		Preset:     "standard",
+		CacheMode:  "lscache",
+	})
+
+	if err := m.Restore(ctx, "new.test", archivePath); err != nil {
+		t.Fatalf("Restore() = %v", err)
+	}
+
+	dstWPConfig := filepath.Join(dir, "www", "new.test", "htdocs", "wp-config.php")
+	cfg, err := os.ReadFile(dstWPConfig) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("read dst wp-config: %v", err)
+	}
+	match := dbPassRE.FindSubmatch(cfg)
+	if match == nil {
+		t.Fatalf("DB_PASSWORD not found in restored wp-config.php; content:\n%s", cfg)
+	}
+	dbPass := string(match[1])
+	if dbPass == "" || dbPass == "oldpass" || dbPass == "placeholder" {
+		t.Fatalf("expected freshly generated DB password in wp-config.php, got %q", dbPass)
+	}
+
+	for _, cmd := range rr.commands {
+		for i, a := range cmd {
+			if strings.Contains(a, dbPass) {
+				t.Fatalf("DB password leaked in argv at index %d:\n  cmd: %v\n  password must be delivered via stdin only", i, cmd)
+			}
+		}
+	}
+
+	var found bool
+	for _, s := range rr.stdins {
+		if strings.Contains(s, dbPass) && strings.Contains(s, "IDENTIFIED BY") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("DB password not found in any Stream stdin; expected CREATE USER ... IDENTIFIED BY '<pass>' delivered via stdin")
+	}
+}
+
 func writeTarFile(t *testing.T, tw *tar.Writer, name string, data []byte) {
 	t.Helper()
 	hdr := &tar.Header{Name: name, Size: int64(len(data)), Mode: 0o644}
