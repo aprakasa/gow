@@ -16,6 +16,11 @@ import (
 var version = "dev"
 
 func main() {
+	if os.Geteuid() != 0 {
+		fmt.Fprintln(os.Stderr, "gow must run as root")
+		os.Exit(1)
+	}
+
 	d := app.DefaultDeps()
 
 	rootCmd := &cobra.Command{
